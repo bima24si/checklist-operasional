@@ -534,6 +534,34 @@
   background: rgb(13 28 21 / 48%);
 }
 
+.logout-modal {
+  width: min(100%, 390px);
+}
+
+.logout-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+}
+
+.logout-confirm-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  background: #00529b;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logout-confirm-button:hover {
+  background: #003f78;
+}
+
 .staff-modal {
   width: min(100%, 410px);
   overflow: hidden;
@@ -2504,13 +2532,16 @@ button.task-checkbox:hover {
 @media (max-width: 680px) {
   .sidebar {
     width: 100%;
-    min-height: 58px;
-    height: 58px;
+    min-height: calc(72px + env(safe-area-inset-bottom, 0px));
+    height: calc(72px + env(safe-area-inset-bottom, 0px));
     position: fixed;
     inset: auto 0 0;
     flex-direction: row;
-    justify-content: space-around;
-    padding: 5px 11px;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid #286493;
+    box-shadow: 0 -8px 24px rgb(0 41 74 / 12%);
   }
 
   .brand,
@@ -2521,32 +2552,79 @@ button.task-checkbox:hover {
 
   .main-nav {
     display: flex;
-    justify-content: space-around;
-    gap: 5px;
+    width: min(100%, 440px);
+    justify-content: center;
+    gap: 8px;
     margin: 0;
   }
 
   .nav-item {
-    width: 48px;
-    height: 44px;
+    width: auto;
+    min-width: 0;
+    max-width: 180px;
+    height: 52px;
+    flex: 1 1 0;
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .nav-item > span {
+    display: block;
+    line-height: 1.15;
   }
 
   .nav-item.active {
-    box-shadow: none;
+    box-shadow: inset 0 -3px #f4c542;
+  }
+
+  .nav-item.active > svg {
+    color: #f4c542;
+  }
+
+  .nav-count {
+    min-width: 17px;
+    height: 17px;
+    position: absolute;
+    top: 1px;
+    right: calc(50% - 28px);
+    margin: 0;
+    font-size: 9px;
   }
 
   .main-content {
     margin-left: 0;
-    padding-bottom: 58px;
+    padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
   }
 
   .topbar {
     height: 55px;
-    padding: 0 15px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    gap: 5px;
+    font-size: 10px;
+  }
+
+  .breadcrumb > span,
+  .breadcrumb > strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .topbar-actions {
-    gap: 9px;
+    flex: 0 0 auto;
+    gap: 4px;
   }
 
   .topbar-user,
@@ -2559,37 +2637,49 @@ button.task-checkbox:hover {
   }
 
   .page-container {
-    padding: 24px 14px 16px;
+    width: 100%;
+    padding: 20px 12px 14px;
   }
 
   .page-heading {
     align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 17px;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
   }
 
   .page-heading h1 {
-    font-size: 21px;
+    font-size: 20px;
   }
 
   .page-heading p {
-    max-width: 260px;
-    font-size: 10px;
+    max-width: 100%;
+    font-size: 11px;
     line-height: 1.5;
   }
 
   .date-card {
-    gap: 0;
-    padding: 6px;
+    gap: 8px;
+    padding: 6px 8px;
   }
 
   .date-icon {
     width: 25px;
     height: 25px;
+    flex: 0 0 25px;
   }
 
   .date-card > span:last-child {
-    display: none;
+    display: flex;
+    min-width: 0;
+  }
+
+  .date-card small {
+    font-size: 7px;
+  }
+
+  .date-card strong {
+    font-size: 9px;
   }
 
   .critical-alert {
@@ -2791,8 +2881,16 @@ button.task-checkbox:hover {
 
   .task-row {
     grid-template-columns: 20px minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 11px 12px;
+    align-items: start;
+    gap: 9px;
+    padding: 13px 12px;
+  }
+
+  .task-row > .task-checkbox {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border-radius: 7px;
   }
 
   .task-number {
@@ -2804,7 +2902,13 @@ button.task-checkbox:hover {
   }
 
   .task-description > strong {
-    font-size: 10px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .task-description > span {
+    font-size: 11px;
+    line-height: 1.5;
   }
 
   .obstacle-editor {
@@ -2819,7 +2923,8 @@ button.task-checkbox:hover {
     grid-column: 2;
     grid-row: 2;
     flex-direction: row;
-    gap: 5px;
+    align-items: center;
+    gap: 6px;
     padding: 0;
   }
 
@@ -2828,7 +2933,7 @@ button.task-checkbox:hover {
   }
 
   .task-deadline strong {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .task-status-cell {
@@ -2838,7 +2943,47 @@ button.task-checkbox:hover {
   }
 
   .task-row .status-badge {
-    font-size: 7px;
+    font-size: 8px;
+  }
+
+  .task-status-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .upload-button,
+  .replace-button,
+  .obstacle-toggle,
+  .task-status-cell .undo-button {
+    min-height: 34px;
+  }
+
+  .task-panel-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .task-panel-header > div {
+    min-width: 0;
+  }
+
+  .task-panel-header h2 {
+    font-size: 13px;
+  }
+
+  .page-footer {
+    flex-wrap: wrap;
+    font-size: 9px;
+  }
+
+  .page-footer > span:last-child {
+    text-align: left;
+  }
+
+  .login-card {
+    padding: 22px 18px;
   }
 
   .task-panel-footer {
@@ -2914,5 +3059,50 @@ button.task-checkbox:hover {
 
   .evidence-modal > img {
     max-height: calc(85vh - 65px);
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .clock-chip {
+    gap: 4px;
+    font-size: 9px;
+  }
+
+  .clock-chip span {
+    display: none;
+  }
+
+  .topbar-actions {
+    gap: 2px;
+  }
+
+  .page-heading h1 {
+    font-size: 18px;
+  }
+
+  .date-card {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .date-card > span:last-child {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .date-card small {
+    margin: 0;
+  }
+
+  .task-panel-header .compact-select {
+    min-width: 98px;
   }
 }

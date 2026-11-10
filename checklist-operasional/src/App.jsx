@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { supabase, supabaseConfigured } from './supabase'
 
 const roles = ['Teller', 'Customer Service', 'Relationship Manager', 'Satpam']
 
@@ -102,22 +103,6 @@ const taskTemplates = [
   },
 ]
 
-function createTasksForStaff(staff) {
-  return taskTemplates
-    .map((template, index) => ({ ...template, index }))
-    .filter((template) => template.role === staff.role)
-    .map((template) => ({
-      ...template,
-      id: `${staff.id}-${template.index}`,
-      staffId: staff.id,
-      unitId: staff.unitName,
-      unitName: staff.unitName,
-      staffName: staff.name,
-      completed: false,
-      evidence: '',
-    }))
-}
-
 function Icon({ name, size = 20 }) {
   const paths = {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /></>,
@@ -196,34 +181,6 @@ function formatActivityTimestamp(timestamp) {
   }).format(new Date(timestamp))
 }
 
-function toBase64(bytes) {
-  return btoa(String.fromCharCode(...bytes))
-}
-
-async function hashPassword(password, salt = crypto.getRandomValues(new Uint8Array(16))) {
-  if (!crypto.subtle) throw new Error('Browser tidak mendukung penyimpanan password yang di-hash.')
-
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' },
-    key,
-    256,
-  )
-
-  return { salt: toBase64(salt), passwordHash: toBase64(new Uint8Array(bits)) }
-}
-
-function fromBase64(value) {
-  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
-}
-
-async function verifyPassword(password, account) {
-  const { passwordHash } = await hashPassword(password, fromBase64(account.passwordSalt))
-  const expected = fromBase64(account.passwordHash)
-  const actual = fromBase64(passwordHash)
-  return actual.length === expected.length && actual.every((value, index) => value === expected[index])
-}
-
 function StatusBadge({ status }) {
   const labels = {
     COMPLETED: 'Selesai',
@@ -234,44 +191,18 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status.toLowerCase()}`}>{labels[status]}</span>
 }
 
-function loadStoredData() {
-  try {
-    const saved = window.localStorage.getItem('ruangpatuh:data')
-    if (!saved) return { staff: [], tasks: [], activities: [], accounts: [], error: '' }
-
-    const data = JSON.parse(saved)
-    if (!Array.isArray(data.staff) || !Array.isArray(data.tasks)) {
-      throw new Error('Format data tidak sesuai.')
-    }
-
-    return {
-      staff: data.staff,
-      tasks: data.tasks,
-      activities: Array.isArray(data.activities) ? data.activities : [],
-      accounts: Array.isArray(data.accounts) ? data.accounts : [],
-      error: '',
-    }
-  } catch (error) {
-    console.error('Data lokal RuangPatuh gagal dimuat.', error)
-    return {
-      staff: [],
-      tasks: [],
-      activities: [],
-      accounts: [],
-      error: 'Data lokal tidak dapat dibaca. Perubahan hanya berlaku selama halaman ini terbuka.',
-    }
-  }
-}
-
 function App() {
-  const [initialData] = useState(loadStoredData)
   const [currentUser, setCurrentUser] = useState(null)
   const [page, setPage] = useState('dashboard')
-  const [staff, setStaff] = useState(initialData.staff)
-  const [tasks, setTasks] = useState(initialData.tasks)
-  const [activities, setActivities] = useState(initialData.activities)
-  const [accounts, setAccounts] = useState(initialData.accounts)
-  const [storageError] = useState(initialData.error)
+  const [staff, setStaff] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [activities, setActivities] = useState([])
+  const [backendError, setBackendError] = useState(() => (
+    supabaseConfigured
+      ? ''
+      : 'Konfigurasi Supabase belum tersedia. Isi VITE_SUPABASE_URL dan VITE_SUPABASE_PUBLISHABLE_KEY di file .env.local.'
+  ))
+  const [authReady, setAuthReady] = useState(!supabaseConfigured)
   const [selectedRole, setSelectedRole] = useState('Semua role')
   const [selectedUnit, setSelectedUnit] = useState('Semua unit')
   const [checklistStaffId, setChecklistStaffId] = useState('')
@@ -279,6 +210,7 @@ function App() {
   const [taskFilter, setTaskFilter] = useState('Semua')
   const [clock, setClock] = useState(getWibTime)
   const [notificationOpen, setNotificationOpen] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const [loginName, setLoginName] = useState('')
   const [loginEmail, setLoginEmail] = useState('')
@@ -291,9 +223,7 @@ function App() {
   const [evidenceError, setEvidenceError] = useState('')
   const [evidencePreview, setEvidencePreview] = useState(null)
   const [openNoteIds, setOpenNoteIds] = useState({})
-  const [noteDrafts, setNoteDrafts] = useState(() => Object.fromEntries(
-    initialData.tasks.map((task) => [task.id, task.obstacleNote ?? '']),
-  ))
+  const [noteDrafts, setNoteDrafts] = useState({})
   const [query, setQuery] = useState('')
   const [activityQuery, setActivityQuery] = useState('')
   const [activityRole, setActivityRole] = useState('Semua role')
@@ -301,7 +231,8 @@ function App() {
   const [authNotice, setAuthNotice] = useState('')
   const fileInputRef = useRef(null)
   const uploadTaskRef = useRef(null)
-  const storageWritable = useRef(!initialData.error)
+  const sessionLoadId = useRef(0)
+  const registrationInProgress = useRef(false)
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(getWibTime()), 1000)
@@ -309,15 +240,160 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!storageWritable.current) return
-
-    try {
-      window.localStorage.setItem('ruangpatuh:data', JSON.stringify({ staff, tasks, activities, accounts }))
-    } catch (error) {
-      storageWritable.current = false
-      console.error('Perubahan RuangPatuh tidak dapat disimpan ke browser.', error)
+    if (!supabaseConfigured || !supabase) {
+      return undefined
     }
-  }, [staff, tasks, activities, accounts])
+
+    let active = true
+    const loadSession = async (session) => {
+      const requestId = ++sessionLoadId.current
+      if (!session?.user) {
+        setCurrentUser(null)
+        setStaff([])
+        setTasks([])
+        setActivities([])
+        setAuthReady(true)
+        return
+      }
+
+      setAuthReady(false)
+      setBackendError('')
+      try {
+        let { data: profile, error } = await supabase
+          .from('profiles')
+          .select('id, full_name, access_role, staff_id')
+          .eq('id', session.user.id)
+          .single()
+        if (error) throw error
+
+        if (profile.access_role === 'Pegawai' && !profile.staff_id) {
+          const employeeRole = session.user.user_metadata?.job_role
+          const employeeTasks = taskTemplates
+            .map((template, taskIndex) => ({ ...template, taskIndex }))
+            .filter((template) => template.role === employeeRole)
+            .map((template) => ({
+              task_index: template.taskIndex,
+              session: template.session,
+              deadline: template.deadline,
+              title: template.title,
+              description: template.description,
+              task_type: template.type,
+            }))
+          const { error: initializeError } = await supabase.rpc('initialize_employee_profile', {
+            p_tasks: employeeTasks,
+          })
+          if (initializeError) throw initializeError
+          const result = await supabase
+            .from('profiles')
+            .select('id, full_name, access_role, staff_id')
+            .eq('id', session.user.id)
+            .single()
+          if (result.error) throw result.error
+          profile = result.data
+        }
+
+        const [staffResult, tasksResult, activitiesResult] = await Promise.all([
+          supabase.from('staff').select('*').order('name'),
+          supabase.from('checklist_tasks').select('*').order('id'),
+          supabase.from('activities').select('*').order('timestamp', { ascending: false }),
+        ])
+        if (staffResult.error) throw staffResult.error
+        if (tasksResult.error) throw tasksResult.error
+        if (activitiesResult.error) throw activitiesResult.error
+
+        const evidencePaths = [...new Set(
+          tasksResult.data.map((task) => task.evidence_path).filter(Boolean),
+        )]
+        const signedEvidence = await Promise.all(evidencePaths.map(async (path) => {
+          const { data, error: signedUrlError } = await supabase.storage
+            .from('evidence')
+            .createSignedUrl(path, 3600)
+          if (signedUrlError) throw signedUrlError
+          return [path, data.signedUrl]
+        }))
+        if (!active || requestId !== sessionLoadId.current) return
+
+        const evidenceUrlByPath = new Map(signedEvidence)
+        const loadedStaff = staffResult.data.map((person) => ({
+          id: person.id,
+          name: person.name,
+          role: person.role,
+          unitName: person.unit_name,
+        }))
+        const loadedTasks = tasksResult.data.map((task) => ({
+          id: task.id,
+          staffId: task.staff_id,
+          staffName: task.staff_name,
+          role: task.role,
+          unitId: task.unit_id,
+          unitName: task.unit_name,
+          session: task.session,
+          deadline: task.deadline,
+          title: task.title,
+          description: task.description,
+          type: task.type,
+          completed: task.completed,
+          evidencePath: task.evidence_path,
+          evidence: task.evidence_path ? evidenceUrlByPath.get(task.evidence_path) : '',
+          obstacleNote: task.obstacle_note,
+          obstacleNoteUpdatedAt: task.obstacle_note_updated_at,
+        }))
+        const loadedActivities = activitiesResult.data.map((activity) => ({
+          id: activity.id,
+          staffId: activity.staff_id,
+          staffName: activity.staff_name,
+          role: activity.role,
+          unitName: activity.unit_name,
+          taskId: activity.task_id,
+          taskTitle: activity.task_title,
+          session: activity.session,
+          action: activity.action,
+          timestamp: activity.timestamp,
+        }))
+        setStaff(loadedStaff)
+        setTasks(loadedTasks)
+        setActivities(loadedActivities)
+        setNoteDrafts(Object.fromEntries(loadedTasks.map((task) => [task.id, task.obstacleNote ?? ''])))
+        setChecklistStaffId(profile.staff_id ?? '')
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: profile.full_name,
+          role: loadedStaff.find((person) => person.id === profile.staff_id)?.role ?? profile.access_role,
+          unitName: loadedStaff.find((person) => person.id === profile.staff_id)?.unitName ?? '',
+          accessRole: profile.access_role,
+        })
+        setPage(profile.access_role === 'Supervisor' ? 'dashboard' : 'checklist')
+      } catch (error) {
+        console.error('Data Supabase gagal dimuat.', error)
+        if (active && requestId === sessionLoadId.current) {
+          setCurrentUser(null)
+          setBackendError(`Data Supabase gagal dimuat: ${error.message}`)
+        }
+      } finally {
+        if (active && requestId === sessionLoadId.current) setAuthReady(true)
+      }
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (registrationInProgress.current && event === 'SIGNED_IN') return
+      window.setTimeout(() => {
+        if (active) void loadSession(session)
+      }, 0)
+    })
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.error('Sesi Supabase gagal diperiksa.', error)
+        if (active) setBackendError(`Sesi Supabase gagal diperiksa: ${error.message}`)
+      }
+      if (active) void loadSession(data?.session)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const unitNames = [...new Set(staff.map((person) => person.unitName))]
   const checklistStaff = staff.find((person) => person.id === checklistStaffId)
@@ -358,8 +434,8 @@ function App() {
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 
-  function recordActivity(task, action) {
-    setActivities((currentActivities) => [{
+  async function recordActivity(task, action) {
+    const activity = {
       id: `activity-${window.crypto.randomUUID()}`,
       staffId: task.staffId,
       staffName: task.staffName,
@@ -370,18 +446,66 @@ function App() {
       session: task.session,
       action,
       timestamp: new Date().toISOString(),
-    }, ...currentActivities])
+    }
+    const { error } = await supabase.from('activities').insert({
+      id: activity.id,
+      staff_id: activity.staffId,
+      staff_name: activity.staffName,
+      role: activity.role,
+      unit_name: activity.unitName,
+      task_id: activity.taskId,
+      task_title: activity.taskTitle,
+      session: activity.session,
+      action: activity.action,
+      timestamp: activity.timestamp,
+    })
+    if (error) throw error
+    setActivities((currentActivities) => [activity, ...currentActivities])
   }
 
-  function toggleTask(taskId) {
+  async function updateTask(task, changes) {
+    const databaseChanges = {}
+    if ('completed' in changes) databaseChanges.completed = changes.completed
+    if ('evidencePath' in changes) databaseChanges.evidence_path = changes.evidencePath
+    if ('obstacleNote' in changes) databaseChanges.obstacle_note = changes.obstacleNote
+    if ('obstacleNoteUpdatedAt' in changes) databaseChanges.obstacle_note_updated_at = changes.obstacleNoteUpdatedAt
+
+    let evidence = task.evidence
+    if ('evidencePath' in changes) {
+      evidence = ''
+      if (changes.evidencePath) {
+        const { data, error: signedUrlError } = await supabase.storage
+          .from('evidence')
+          .createSignedUrl(changes.evidencePath, 3600)
+        if (signedUrlError) throw signedUrlError
+        evidence = data.signedUrl
+      }
+    }
+
+    const { error } = await supabase
+      .from('checklist_tasks')
+      .update(databaseChanges)
+      .eq('id', task.id)
+    if (error) throw error
+
+    const updatedTask = { ...task, ...changes, evidence }
+    setTasks((currentTasks) => currentTasks.map((item) => item.id === task.id ? updatedTask : item))
+    return updatedTask
+  }
+
+  async function toggleTask(taskId) {
     const task = tasks.find((item) => item.id === taskId)
     if (!task || task.type === 'CHECKBOX_WITH_IMAGE') return
 
     const completed = !task.completed
-    setTasks((currentTasks) => currentTasks.map((item) => (
-      item.id === taskId ? { ...item, completed } : item
-    )))
-    recordActivity(task, completed ? 'Tugas diselesaikan' : 'Penyelesaian dibatalkan')
+    try {
+      await updateTask(task, { completed })
+      await recordActivity(task, completed ? 'Tugas diselesaikan' : 'Penyelesaian dibatalkan')
+      setBackendError('')
+    } catch (error) {
+      console.error('Perubahan checklist gagal disimpan.', error)
+      setBackendError(`Perubahan checklist gagal disimpan: ${error.message}`)
+    }
   }
 
   function openEvidenceUpload(taskId) {
@@ -391,7 +515,7 @@ function App() {
   }
 
   function openEvidencePreview(task) {
-    if (!task.evidence?.startsWith('data:image')) return
+    if (!task.evidence) return
     setEvidencePreview({ src: task.evidence, title: task.title })
   }
 
@@ -401,8 +525,8 @@ function App() {
     event.target.value = ''
     if (!file || !taskId) return
 
-    if (!file.type.startsWith('image/')) {
-      setEvidenceError('Pilih file gambar untuk bukti checklist.')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setEvidenceError('Pilih gambar berformat JPG, PNG, atau WebP.')
       return
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -410,60 +534,68 @@ function App() {
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      const task = tasks.find((item) => item.id === taskId)
-      setTasks((currentTasks) => currentTasks.map((task) => (
-        task.id === taskId
-          ? { ...task, completed: true, evidence: String(reader.result) }
-          : task
-      )))
-      if (task) recordActivity(task, 'Bukti foto diunggah')
-      setEvidenceError('')
-    }
-    reader.onerror = () => setEvidenceError('Foto tidak dapat dibaca. Silakan coba lagi.')
-    reader.readAsDataURL(file)
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task) return
+    const evidencePath = `${currentUser.id}/${task.id}/${window.crypto.randomUUID()}`
+    setAuthBusy(true)
+    void (async () => {
+      let uploaded = false
+      let taskSaved = false
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('evidence')
+          .upload(evidencePath, file, { contentType: file.type, upsert: false })
+        if (uploadError) throw uploadError
+        uploaded = true
+        await updateTask(task, { completed: true, evidencePath })
+        taskSaved = true
+        await recordActivity(task, 'Bukti foto diunggah')
+        setEvidenceError('')
+        setBackendError('')
+      } catch (error) {
+        if (uploaded && !taskSaved) {
+          const { error: cleanupError } = await supabase.storage.from('evidence').remove([evidencePath])
+          if (cleanupError) {
+            console.error('Pembersihan unggahan bukti yang gagal juga gagal.', cleanupError)
+          }
+        }
+        console.error('Bukti foto gagal disimpan.', error)
+        setEvidenceError(`Bukti foto gagal disimpan: ${error.message}`)
+        setBackendError(`Bukti foto gagal disimpan: ${error.message}`)
+      } finally {
+        setAuthBusy(false)
+      }
+    })()
   }
 
-  function saveObstacleNote(task) {
+  async function saveObstacleNote(task) {
     const note = (noteDrafts[task.id] ?? '').trim()
     const previousNote = task.obstacleNote ?? ''
     if (note === previousNote) return
 
-    setTasks((currentTasks) => currentTasks.map((item) => (
-      item.id === task.id
-        ? { ...item, obstacleNote: note, obstacleNoteUpdatedAt: new Date().toISOString() }
-        : item
-    )))
-    recordActivity(task, note ? 'Catatan kendala diperbarui' : 'Catatan kendala dihapus')
-  }
-
-  function undoCompletion(task) {
-    setTasks((currentTasks) => currentTasks.map((item) => (
-      item.id === task.id ? { ...item, completed: false, evidence: '' } : item
-    )))
-    recordActivity(task, 'Penyelesaian dibatalkan')
-  }
-
-  function enterAccount(account) {
-    if (account.accessRole === 'Supervisor') {
-      setCurrentUser({ id: account.id, name: account.name, role: 'Supervisor', accessRole: 'Supervisor' })
-      setPage('dashboard')
-    } else {
-      const employee = staff.find((person) => person.id === account.staffId)
-      if (!employee) {
-        setLoginError('Profil pegawai untuk akun ini tidak ditemukan.')
-        return
-      }
-      setChecklistStaffId(employee.id)
-      setCurrentUser({ ...employee, accessRole: 'Pegawai' })
-      setPage('checklist')
+    try {
+      await updateTask(task, { obstacleNote: note, obstacleNoteUpdatedAt: new Date().toISOString() })
+      await recordActivity(task, note ? 'Catatan kendala diperbarui' : 'Catatan kendala dihapus')
+      setBackendError('')
+    } catch (error) {
+      console.error('Catatan kendala gagal disimpan.', error)
+      setBackendError(`Catatan kendala gagal disimpan: ${error.message}`)
     }
+  }
 
-    setLoginPassword('')
-    setLoginPasswordConfirm('')
-    setLoginError('')
-    setAuthNotice('')
+  async function undoCompletion(task) {
+    try {
+      await updateTask(task, { completed: false, evidencePath: '' })
+      await recordActivity(task, 'Penyelesaian dibatalkan')
+      if (task.evidencePath) {
+        const { error } = await supabase.storage.from('evidence').remove([task.evidencePath])
+        if (error) throw error
+      }
+      setBackendError('')
+    } catch (error) {
+      console.error('Pembatalan checklist gagal disimpan.', error)
+      setBackendError(`Pembatalan checklist gagal disimpan: ${error.message}`)
+    }
   }
 
   async function submitAuthentication(event) {
@@ -473,6 +605,7 @@ function App() {
 
     const email = loginEmail.trim().toLocaleLowerCase()
     const name = loginName.trim()
+    const unitName = loginUnit.trim()
     if (!email || (authMode === 'register' && !name)) {
       setLoginError(authMode === 'register' ? 'Email dan nama lengkap wajib diisi.' : 'Email wajib diisi.')
       return
@@ -481,99 +614,69 @@ function App() {
       setLoginError('Masukkan alamat email yang valid.')
       return
     }
-    if (!loginPassword) {
-      setLoginError('Password wajib diisi.')
+    if (loginPassword.length < (authMode === 'register' ? 8 : 1)) {
+      setLoginError(authMode === 'register' ? 'Password minimal 8 karakter.' : 'Password wajib diisi.')
       return
     }
-
-    if (authMode === 'register') {
-      if (accounts.some((account) => (account.email ?? account.username)?.toLocaleLowerCase() === email)) {
-        setLoginError('Email sudah terdaftar.')
-        return
-      }
-      if (loginPassword.length < 4) {
-        setLoginError('Password minimal 4 karakter.')
-        return
-      }
-      if (loginPassword !== loginPasswordConfirm) {
-        setLoginError('Konfirmasi password tidak sama.')
-        return
-      }
-
-      const unitName = loginUnit.trim()
-      if (!unitName) {
-        setLoginError('Unit kerja wajib diisi.')
-        return
-      }
-
-      setAuthBusy(true)
-      try {
-        const { salt, passwordHash } = await hashPassword(loginPassword)
-        const existingStaff = staff.find((person) =>
-          person.name.toLocaleLowerCase() === name.toLocaleLowerCase()
-          && person.role === loginStaffRole
-          && person.unitName.toLocaleLowerCase() === unitName.toLocaleLowerCase(),
-        )
-        const employee = existingStaff ?? {
-          id: `staff-${window.crypto.randomUUID()}`,
-          name,
-          role: loginStaffRole,
-          unitName,
-        }
-        const account = {
-          id: `account-${window.crypto.randomUUID()}`,
-          email,
-          name,
-          accessRole: 'Pegawai',
-          staffId: employee.id,
-          passwordSalt: salt,
-          passwordHash,
-        }
-
-        if (!existingStaff) {
-          setStaff((currentStaff) => [...currentStaff, employee])
-          setTasks((currentTasks) => [...currentTasks, ...createTasksForStaff(employee)])
-        }
-        setAccounts((currentAccounts) => [...currentAccounts, account])
-        setAuthMode('login')
-        setLoginPassword('')
-        setLoginPasswordConfirm('')
-        setLoginError('')
-        setAuthNotice('Akun berhasil dibuat. Silakan masuk dengan email dan password Anda.')
-      } catch (error) {
-        console.error('Pembuatan akun lokal gagal.', error)
-        setLoginError('Akun tidak dapat dibuat karena fitur keamanan browser tidak tersedia.')
-      } finally {
-        setAuthBusy(false)
-      }
+    if (authMode === 'register' && loginPassword !== loginPasswordConfirm) {
+      setLoginError('Konfirmasi password tidak sama.')
       return
     }
-
-    const account = accounts.find((item) =>
-      (item.email ?? item.username)?.toLocaleLowerCase() === email
-    )
-    if (!account) {
-      setLoginError('Akun tidak ditemukan. Periksa email atau daftar terlebih dahulu.')
+    if (authMode === 'register' && !unitName) {
+      setLoginError('Unit kerja wajib diisi.')
       return
     }
 
     setAuthBusy(true)
     try {
-      if (await verifyPassword(loginPassword, account)) {
-        enterAccount(account)
+      if (authMode === 'register') {
+        registrationInProgress.current = true
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password: loginPassword,
+          options: {
+            data: {
+              full_name: name,
+              job_role: loginStaffRole,
+              unit_name: unitName,
+            },
+          },
+        })
+        if (error) throw error
+
+        if (data.session) {
+          const { error: signOutError } = await supabase.auth.signOut()
+          if (signOutError) throw signOutError
+        }
+
+        setAuthMode('login')
+        setLoginPassword('')
+        setLoginPasswordConfirm('')
+        setAuthNotice(data.session
+          ? 'Akun berhasil dibuat. Silakan masuk dengan email dan password Anda.'
+          : 'Akun berhasil dibuat. Periksa email untuk konfirmasi, lalu masuk.')
       } else {
-        setLoginError('Password salah.')
+        const { error } = await supabase.auth.signInWithPassword({ email, password: loginPassword })
+        if (error) throw error
+        setLoginPassword('')
       }
     } catch (error) {
-      console.error('Verifikasi akun lokal gagal.', error)
-      setLoginError('Login gagal karena fitur keamanan browser tidak tersedia.')
+      console.error('Autentikasi Supabase gagal.', error)
+      setLoginError(error.message)
     } finally {
+      registrationInProgress.current = false
       setAuthBusy(false)
     }
   }
 
-  function logout() {
-    setCurrentUser(null)
+  async function confirmLogout() {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      console.error('Keluar dari Supabase gagal.', error)
+      setBackendError(`Tidak dapat keluar: ${error.message}`)
+      return
+    }
+    setLogoutConfirmOpen(false)
     setPage('dashboard')
     setNotificationOpen(false)
   }
@@ -584,6 +687,10 @@ function App() {
       { id: 'activity', label: 'Riwayat aktivitas', icon: 'history' },
     ]
     : [{ id: 'checklist', label: 'Checklist harian', icon: 'checklist' }]
+
+  if (!authReady) {
+    return <main className="login-page"><section className="login-card"><p>Memuat sesi dan data Supabase...</p></section></main>
+  }
 
   if (!currentUser) {
     return (
@@ -599,6 +706,7 @@ function App() {
             <span className="brand-copy"><strong>BRI</strong><small>OPERASIONAL BANK</small></span>
           </a>
           <div className="login-heading"><span className="eyebrow"><span className="live-indicator" /> INTERNAL COMPLIANCE</span><h1>{authMode === 'login' ? 'Selamat datang' : 'Buat akun baru'}</h1><p>{authMode === 'login' ? 'Masuk untuk melanjutkan aktivitas operasional harian.' : 'Daftarkan akun untuk mengakses checklist operasional.'}</p></div>
+          {backendError && <p className="login-error" role="alert">{backendError}</p>}
           <form className="login-form" onSubmit={submitAuthentication}>
             {authMode === 'register' && <label>Nama lengkap<input autoComplete="name" value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Masukkan nama lengkap" /></label>}
             <label>Email<input type="email" autoComplete="email" required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="nama@contoh.com" /></label>
@@ -608,14 +716,14 @@ function App() {
                 <label>Unit kerja<input value={loginUnit} onChange={(event) => setLoginUnit(event.target.value)} placeholder="Masukkan nama cabang atau unit" /></label>
               </>
             )}
-            <label>Password<input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 4 karakter)'} /></label>
+            <label>Password<input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 8 karakter)'} /></label>
             {authMode === 'register' && <label>Konfirmasi password<input type="password" autoComplete="new-password" value={loginPasswordConfirm} onChange={(event) => setLoginPasswordConfirm(event.target.value)} placeholder="Masukkan ulang password" /></label>}
             {loginError && <p className="login-error" role="alert">{loginError}</p>}
             {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
-            <button type="submit" className="login-submit" disabled={authBusy}>{authBusy ? 'Memproses...' : authMode === 'login' ? 'Masuk' : 'Daftar'}<Icon name="chevron" size={16} /></button>
+            <button type="submit" className="login-submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? 'Memproses...' : authMode === 'login' ? 'Masuk' : 'Daftar'}<Icon name="chevron" size={16} /></button>
           </form>
           <div className="auth-switch">{authMode === 'login' ? 'Belum punya akun?' : 'Sudah punya akun?'} <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); setAuthNotice('') }}>{authMode === 'login' ? 'Daftar' : 'Masuk'}</button></div>
-          <div className="login-notice"><Icon name="alert" size={15} /><span><strong>Prototipe lokal</strong><br />Akun pegawai dan password di-hash lalu disimpan di browser ini.</span></div>
+          <div className="login-notice"><Icon name="alert" size={15} /><span><strong>Autentikasi Supabase</strong><br />Akun dan data checklist disimpan di Supabase. Registrasi hanya untuk pegawai.</span></div>
         </section>
         <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
       </main>
@@ -665,9 +773,9 @@ function App() {
         <div className="sidebar-footer">
           <div className="security-note">
             <span className="security-lock">✓</span>
-            <p><strong>Data staf lokal</strong><br />Tersimpan di browser ini</p>
+            <p><strong>Database Supabase</strong><br />Data tersinkron</p>
           </div>
-          <button className="profile-button" onClick={logout}>
+          <button className="profile-button" onClick={() => setLogoutConfirmOpen(true)}>
             <span className="avatar avatar-supervisor">{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
             <span className="profile-copy"><strong>{currentUser.name}</strong><small>{currentUser.accessRole === 'Supervisor' ? 'Supervisor' : currentUser.role}</small></span>
             <Icon name="logout" size={17} />
@@ -688,7 +796,7 @@ function App() {
               <Icon name="bell" size={19} />
               {overdueTasks.length > 0 && <span className="notification-dot" />}
             </button>
-            <button className="icon-button logout-button" aria-label="Keluar" onClick={logout}><Icon name="logout" size={18} /></button>
+            <button className="icon-button logout-button" aria-label="Keluar" onClick={() => setLogoutConfirmOpen(true)}><Icon name="logout" size={18} /></button>
             <span className="topbar-divider" />
             <div className="topbar-user">
               <span className="avatar avatar-supervisor">{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
@@ -707,7 +815,7 @@ function App() {
         </header>
 
         <div className="page-container">
-          {storageError && <div className="storage-warning" role="status"><Icon name="alert" size={15} />{storageError}</div>}
+          {backendError && <div className="storage-warning" role="alert"><Icon name="alert" size={15} />{backendError}</div>}
           {currentUser.accessRole === 'Supervisor' && page === 'dashboard' && (
             <>
               <section className="page-heading">
@@ -945,11 +1053,9 @@ function App() {
                         <span>{task.description}</span>
                         {task.type === 'CHECKBOX_WITH_IMAGE' && (
                           <div className="evidence-line">
-                            {task.evidence && task.evidence.startsWith('data:image')
-                              ? <><button type="button" className="evidence-preview-button" onClick={() => openEvidencePreview(task)}><img className="evidence-thumb" src={task.evidence} alt="" /><span>Lihat foto bukti</span></button></>
-                              : task.evidence
-                                ? <><span className="evidence-saved"><Icon name="check" size={13} /></span><span>{task.evidence}</span></>
-                                : <><Icon name="camera" size={14} /><span>Bukti foto wajib</span></>}
+                            {task.evidence
+                              ? <button type="button" className="evidence-preview-button" onClick={() => openEvidencePreview(task)}><img className="evidence-thumb" src={task.evidence} alt="" /><span>Lihat foto bukti</span></button>
+                              : <><Icon name="camera" size={14} /><span>Bukti foto wajib</span></>}
                             {!task.completed && <button className="upload-button" onClick={() => openEvidenceUpload(task.id)}>Unggah foto</button>}
                             {task.completed && <button className="replace-button" onClick={() => openEvidenceUpload(task.id)}>Ganti foto</button>}
                           </div>
@@ -991,8 +1097,8 @@ function App() {
                 </div>
                 <div className="task-panel-footer"><span><Icon name="alert" size={15} /> Tugas yang belum selesai setelah deadline otomatis ditandai terlambat.</span><span>Waktu terakhir diperbarui {clock.label} WIB</span></div>
               </section>}
-              <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" capture="environment" onChange={handleEvidenceChange} />
-              <footer className="page-footer"><span>BRI <span>·</span> Internal Compliance</span><span>Foto bukti diproses di perangkat ini dalam prototipe.</span></footer>
+              <input ref={fileInputRef} className="hidden-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleEvidenceChange} />
+              <footer className="page-footer"><span>BRI <span>·</span> Internal Compliance</span><span>Bukti foto tersimpan di Supabase.</span></footer>
             </>
           )}
 
@@ -1004,6 +1110,31 @@ function App() {
             <section className="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidence-modal-title">
               <div className="evidence-modal-header"><div><h2 id="evidence-modal-title">Bukti foto</h2><p>{evidencePreview.title}</p></div><button type="button" className="plain-button" aria-label="Tutup pratinjau" onClick={() => setEvidencePreview(null)}><Icon name="close" size={19} /></button></div>
               <img src={evidencePreview.src} alt={`Bukti foto: ${evidencePreview.title}`} />
+            </section>
+          </div>
+        )}
+        {logoutConfirmOpen && (
+          <div
+            className="modal-backdrop logout-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setLogoutConfirmOpen(false)
+            }}
+          >
+            <section className="staff-modal logout-modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+              <div className="modal-header">
+                <div>
+                  <span className="modal-icon"><Icon name="logout" size={17} /></span>
+                  <div>
+                    <h2 id="logout-modal-title">Keluar dari akun?</h2>
+                    <p>Anda perlu masuk kembali untuk melanjutkan.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="logout-modal-actions">
+                <button type="button" className="secondary-button" onClick={() => setLogoutConfirmOpen(false)}>Batal</button>
+                <button type="button" className="logout-confirm-button" onClick={confirmLogout}>Ya, keluar</button>
+              </div>
             </section>
           </div>
         )}
