@@ -1,0 +1,13 @@
+{
+  "name": "checklist-operasional-root",
+  "private": true,
+  "workspaces": [
+    "checklist-operasional"
+  ],
+  "scripts": {
+    "dev": "npm --prefix checklist-operasional run dev -- --host 0.0.0.0",
+    "build": "npm --prefix checklist-operasional run build",
+    "preview": "npm --prefix checklist-operasional run preview -- --host 0.0.0.0",
+    "lint": "npm --prefix checklist-operasional run lint"
+  }
+}
