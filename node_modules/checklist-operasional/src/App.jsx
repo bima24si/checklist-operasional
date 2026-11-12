@@ -666,7 +666,6 @@ function App() {
             <button type="submit" className="login-submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? 'Memproses...' : authMode === 'login' ? 'Masuk' : 'Daftar'}<Icon name="chevron" size={16} /></button>
           </form>
           <div className="auth-switch">{authMode === 'login' ? 'Belum punya akun?' : 'Sudah punya akun?'} <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); setAuthNotice('') }}>{authMode === 'login' ? 'Daftar' : 'Masuk'}</button></div>
-          <div className="login-notice"><Icon name="alert" size={15} /><span><strong>Autentikasi Supabase</strong><br />Akun dan data checklist disimpan di Supabase. Registrasi hanya untuk pegawai.</span></div>
         </section>
         <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
       </main>

@@ -44,7 +44,7 @@ npm run dev
 
 ## Deploy ke Vercel
 
-Project ini sudah memiliki `vercel.json` di folder induk. Impor folder induk project ke Vercel dan biarkan **Root Directory** tetap di root; konfigurasi tersebut mengarahkan output build ke folder Vite yang berada di `checklist-operasional/dist`.
+Project ini sudah memiliki `vercel.json` di folder induk. Impor folder induk project ke Vercel dan biarkan **Root Directory** tetap di root. Build dari root menaruh hasilnya di `dist`, sesuai output directory pada konfigurasi Vercel.
 
 Di **Project Settings > Environment Variables**, tambahkan:
 
