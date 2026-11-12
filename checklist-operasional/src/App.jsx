@@ -122,6 +122,8 @@ function Icon({ name, size = 20 }) {
     add: <><path d="M12 5v14M5 12h14" /></>,
     history: <><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8" /><path d="M3 3v5h5m4-1v5l3 2" /></>,
     note: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8m-8 4h8" /></>,
+    eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+    eyeOff: <><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.8 15.8 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.7 10.7 0 0 0 3-.4" /></>,
   }
 
   return (
@@ -191,12 +193,38 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status.toLowerCase()}`}>{labels[status]}</span>
 }
 
+async function getProfileByUserId(userId) {
+  if (!supabase || !userId) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, access_role, staff_id, approval_status')
+    .eq('id', userId)
+    .limit(2)
+
+  if (error) throw error
+
+  if (!data || data.length === 0) {
+    return null
+  }
+
+  if (data.length > 1) {
+    console.warn('Profil pengguna memiliki lebih dari satu baris. Menggunakan baris pertama.', data)
+  }
+
+  return data[0]
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [page, setPage] = useState('dashboard')
   const [staff, setStaff] = useState([])
   const [tasks, setTasks] = useState([])
   const [activities, setActivities] = useState([])
+  const [pendingApprovals, setPendingApprovals] = useState([])
+  const [approvalBusyId, setApprovalBusyId] = useState('')
   const [backendError, setBackendError] = useState(() => (
     supabaseConfigured
       ? ''
@@ -216,6 +244,8 @@ function App() {
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [loginPasswordConfirm, setLoginPasswordConfirm] = useState('')
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loginStaffRole, setLoginStaffRole] = useState(roles[0])
   const [loginUnit, setLoginUnit] = useState('')
   const [loginError, setLoginError] = useState('')
@@ -252,6 +282,7 @@ function App() {
         setStaff([])
         setTasks([])
         setActivities([])
+        setPendingApprovals([])
         setAuthReady(true)
         return
       }
@@ -259,12 +290,27 @@ function App() {
       setAuthReady(false)
       setBackendError('')
       try {
-        let { data: profile, error } = await supabase
-          .from('profiles')
-          .select('id, full_name, access_role, staff_id')
-          .eq('id', session.user.id)
-          .single()
-        if (error) throw error
+        let profile = await getProfileByUserId(session.user.id)
+        if (!profile) {
+          throw new Error('Profil pengguna belum tersedia di Supabase. Silakan masuk kembali atau daftar ulang.')
+        }
+
+        if (profile.approval_status !== 'approved') {
+          if (!active || requestId !== sessionLoadId.current) return
+          setStaff([])
+          setTasks([])
+          setActivities([])
+          setPendingApprovals([])
+          setCurrentUser({
+            id: session.user.id,
+            email: session.user.email,
+            name: profile.full_name,
+            accessRole: profile.access_role,
+            approvalStatus: profile.approval_status,
+          })
+          setAuthReady(true)
+          return
+        }
 
         if (profile.access_role === 'Pegawai' && !profile.staff_id) {
           const employeeRole = session.user.user_metadata?.job_role
@@ -283,23 +329,25 @@ function App() {
             p_tasks: employeeTasks,
           })
           if (initializeError) throw initializeError
-          const result = await supabase
-            .from('profiles')
-            .select('id, full_name, access_role, staff_id')
-            .eq('id', session.user.id)
-            .single()
-          if (result.error) throw result.error
-          profile = result.data
+          const refreshedProfile = await getProfileByUserId(session.user.id)
+          if (!refreshedProfile) {
+            throw new Error('Profil pengguna tidak bisa diinisialisasi. Cek data auth dan trigger Supabase.')
+          }
+          profile = refreshedProfile
         }
 
-        const [staffResult, tasksResult, activitiesResult] = await Promise.all([
+        const [staffResult, tasksResult, activitiesResult, approvalsResult] = await Promise.all([
           supabase.from('staff').select('*').order('name'),
           supabase.from('checklist_tasks').select('*').order('id'),
           supabase.from('activities').select('*').order('timestamp', { ascending: false }),
+          profile.access_role === 'Supervisor'
+            ? supabase.rpc('list_pending_employee_approvals')
+            : Promise.resolve({ data: [], error: null }),
         ])
         if (staffResult.error) throw staffResult.error
         if (tasksResult.error) throw tasksResult.error
         if (activitiesResult.error) throw activitiesResult.error
+        if (approvalsResult.error) throw approvalsResult.error
 
         const evidencePaths = [...new Set(
           tasksResult.data.map((task) => task.evidence_path).filter(Boolean),
@@ -353,6 +401,7 @@ function App() {
         setStaff(loadedStaff)
         setTasks(loadedTasks)
         setActivities(loadedActivities)
+        setPendingApprovals(approvalsResult.data ?? [])
         setNoteDrafts(Object.fromEntries(loadedTasks.map((task) => [task.id, task.obstacleNote ?? ''])))
         setChecklistStaffId(profile.staff_id ?? '')
         setCurrentUser({
@@ -653,8 +702,8 @@ function App() {
         setLoginPassword('')
         setLoginPasswordConfirm('')
         setAuthNotice(data.session
-          ? 'Akun berhasil dibuat. Silakan masuk dengan email dan password Anda.'
-          : 'Akun berhasil dibuat. Periksa email untuk konfirmasi, lalu masuk.')
+          ? 'Pendaftaran berhasil dikirim dan sedang menunggu persetujuan supervisor. Anda baru dapat masuk setelah disetujui.'
+          : 'Pendaftaran berhasil dikirim. Periksa email untuk konfirmasi, lalu tunggu persetujuan supervisor sebelum masuk.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password: loginPassword })
         if (error) throw error
@@ -681,9 +730,27 @@ function App() {
     setNotificationOpen(false)
   }
 
+  async function approveRegistration(approval) {
+    setApprovalBusyId(approval.user_id)
+    setBackendError('')
+    try {
+      const { error } = await supabase.rpc('approve_employee_registration', {
+        p_user_id: approval.user_id,
+      })
+      if (error) throw error
+      setPendingApprovals((current) => current.filter((item) => item.user_id !== approval.user_id))
+    } catch (error) {
+      console.error('Persetujuan pendaftaran pegawai gagal.', error)
+      setBackendError(`Persetujuan pendaftaran pegawai gagal: ${error.message}`)
+    } finally {
+      setApprovalBusyId('')
+    }
+  }
+
   const navItems = currentUser?.accessRole === 'Supervisor'
     ? [
       { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { id: 'approvals', label: 'Persetujuan pegawai', icon: 'checklist' },
       { id: 'activity', label: 'Riwayat aktivitas', icon: 'history' },
     ]
     : [{ id: 'checklist', label: 'Checklist harian', icon: 'checklist' }]
@@ -716,14 +783,41 @@ function App() {
                 <label>Unit kerja<input value={loginUnit} onChange={(event) => setLoginUnit(event.target.value)} placeholder="Masukkan nama cabang atau unit" /></label>
               </>
             )}
-            <label>Password<input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 8 karakter)'} /></label>
-            {authMode === 'register' && <label>Konfirmasi password<input type="password" autoComplete="new-password" value={loginPasswordConfirm} onChange={(event) => setLoginPasswordConfirm(event.target.value)} placeholder="Masukkan ulang password" /></label>}
+            <label>Password
+              <span className="password-input">
+                <input type={showLoginPassword ? 'text' : 'password'} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 8 karakter)'} />
+                <button type="button" className="password-toggle" aria-label={showLoginPassword ? 'Sembunyikan password' : 'Tampilkan password'} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}><Icon name={showLoginPassword ? 'eyeOff' : 'eye'} size={17} /></button>
+              </span>
+            </label>
+            {authMode === 'register' && <label>Konfirmasi password
+              <span className="password-input">
+                <input type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" value={loginPasswordConfirm} onChange={(event) => setLoginPasswordConfirm(event.target.value)} placeholder="Masukkan ulang password" />
+                <button type="button" className="password-toggle" aria-label={showConfirmPassword ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((visible) => !visible)}><Icon name={showConfirmPassword ? 'eyeOff' : 'eye'} size={17} /></button>
+              </span>
+            </label>}
             {loginError && <p className="login-error" role="alert">{loginError}</p>}
             {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
             <button type="submit" className="login-submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? 'Memproses...' : authMode === 'login' ? 'Masuk' : 'Daftar'}<Icon name="chevron" size={16} /></button>
           </form>
           <div className="auth-switch">{authMode === 'login' ? 'Belum punya akun?' : 'Sudah punya akun?'} <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); setAuthNotice('') }}>{authMode === 'login' ? 'Daftar' : 'Masuk'}</button></div>
           <div className="login-notice"><Icon name="alert" size={15} /><span><strong>Autentikasi Supabase</strong><br />Akun dan data checklist disimpan di Supabase. Registrasi hanya untuk pegawai.</span></div>
+        </section>
+        <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
+      </main>
+    )
+  }
+
+  if (currentUser.approvalStatus === 'pending') {
+    return (
+      <main className="login-page">
+        <section className="login-card approval-pending-card">
+          <span className="approval-pending-icon"><Icon name="clock" size={23} /></span>
+          <div className="login-heading">
+            <span className="eyebrow">PENDAFTARAN PEGAWAI</span>
+            <h1>Menunggu persetujuan</h1>
+            <p>Akun {currentUser.name} belum dapat digunakan. Supervisor perlu menyetujui pendaftaran Anda terlebih dahulu.</p>
+          </div>
+          <button type="button" className="login-submit" onClick={confirmLogout}>Keluar dan kembali ke halaman masuk<Icon name="logout" size={16} /></button>
         </section>
         <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
       </main>
@@ -756,6 +850,9 @@ function App() {
             >
               <Icon name={item.icon} size={19} />
               <span>{item.label}</span>
+              {item.id === 'approvals' && pendingApprovals.length > 0 && (
+                <span className="nav-count">{pendingApprovals.length}</span>
+              )}
               {item.id === 'dashboard' && overdueTasks.length > 0 && (
                 <span className="nav-count">{overdueTasks.length}</span>
               )}
@@ -936,6 +1033,60 @@ function App() {
               </section>
 
               <footer className="page-footer"><span>BRI <span>·</span> Internal Compliance</span><span>Semua waktu menggunakan WIB (Asia/Jakarta)</span></footer>
+            </>
+          )}
+
+          {currentUser.accessRole === 'Supervisor' && page === 'approvals' && (
+            <>
+              <section className="page-heading">
+                <div>
+                  <div className="eyebrow"><span className="live-indicator" /> AKSES PEGAWAI</div>
+                  <h1>Persetujuan Pendaftaran</h1>
+                  <p>Tinjau data pegawai baru sebelum memberi akses ke checklist operasional.</p>
+                </div>
+                <div className="date-card">
+                  <span className="date-icon"><Icon name="clock" size={17} /></span>
+                  <span><small>MENUNGGU</small><strong>{pendingApprovals.length} pendaftaran</strong></span>
+                </div>
+              </section>
+
+              <section className="panel approvals-panel">
+                <div className="panel-header">
+                  <div><h2>Pendaftaran menunggu persetujuan</h2><p>Akun pegawai baru hanya dapat digunakan setelah disetujui.</p></div>
+                  <span className="count-pill">{pendingApprovals.length} menunggu</span>
+                </div>
+                {pendingApprovals.length ? (
+                  <div className="approval-list">
+                    {pendingApprovals.map((approval) => (
+                      <article className="approval-card" key={approval.user_id}>
+                        <span className="avatar staff-avatar">{approval.full_name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
+                        <div className="approval-details">
+                          <strong>{approval.full_name}</strong>
+                          <span>{approval.email}</span>
+                          <small>{approval.job_role || 'Role belum diisi'} <i>·</i> {approval.unit_name || 'Unit belum diisi'}</small>
+                          <small>Mendaftar {formatActivityTimestamp(approval.requested_at)} WIB</small>
+                        </div>
+                        <button
+                          type="button"
+                          className="approval-button"
+                          disabled={approvalBusyId !== ''}
+                          onClick={() => approveRegistration(approval)}
+                        >
+                          <Icon name="check" size={16} />
+                          {approvalBusyId === approval.user_id ? 'Memproses...' : 'Setujui'}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state approval-empty">
+                    <span className="empty-check"><Icon name="check" size={21} /></span>
+                    <strong>Tidak ada pendaftaran tertunda</strong>
+                    <span>Pendaftaran pegawai baru akan muncul di halaman ini.</span>
+                  </div>
+                )}
+              </section>
+              <footer className="page-footer"><span>BRI <span>·</span> Persetujuan pendaftaran</span><span>Akses diberikan setelah persetujuan supervisor</span></footer>
             </>
           )}
 

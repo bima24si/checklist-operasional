@@ -13,9 +13,29 @@ create table if not exists public.profiles (
   full_name text not null,
   access_role text not null default 'Pegawai'
     check (access_role in ('Pegawai', 'Supervisor')),
+  approval_status text not null default 'approved'
+    check (approval_status in ('pending', 'approved')),
   staff_id text unique references public.staff (id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists approval_status text not null default 'approved';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_approval_status_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_approval_status_check
+      check (approval_status in ('pending', 'approved'));
+  end if;
+end
+$$;
 
 create table if not exists public.checklist_tasks (
   id text primary key,
@@ -73,6 +93,16 @@ as $$
   select staff_id from public.profiles where id = (select auth.uid())
 $$;
 
+create or replace function public.current_approval_status()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select approval_status from public.profiles where id = (select auth.uid())
+$$;
+
 create or replace function public.create_profile_for_new_user()
 returns trigger
 language plpgsql
@@ -80,10 +110,11 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, full_name)
+  insert into public.profiles (id, full_name, approval_status)
   values (
     new.id,
-    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1))
+    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1)),
+    'pending'
   );
   return new;
 end;
@@ -131,6 +162,10 @@ begin
 
   if v_profile.access_role <> 'Pegawai' then
     raise exception 'Only employee profiles can be initialized';
+  end if;
+
+  if v_profile.approval_status <> 'approved' then
+    raise exception 'Employee registration is waiting for supervisor approval';
   end if;
 
   if v_profile.staff_id is not null then
@@ -192,6 +227,64 @@ begin
 end;
 $$;
 
+create or replace function public.list_pending_employee_approvals()
+returns table (
+  user_id uuid,
+  full_name text,
+  email text,
+  job_role text,
+  unit_name text,
+  requested_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null
+    or public.current_access_role() is distinct from 'Supervisor'
+    or public.current_approval_status() is distinct from 'approved' then
+    raise exception 'Only approved supervisors can view pending registrations';
+  end if;
+
+  return query
+    select p.id, p.full_name, u.email::text,
+      u.raw_user_meta_data ->> 'job_role',
+      u.raw_user_meta_data ->> 'unit_name',
+      p.created_at
+    from public.profiles as p
+    join auth.users as u on u.id = p.id
+    where p.access_role = 'Pegawai'
+      and p.approval_status = 'pending'
+    order by p.created_at;
+end;
+$$;
+
+create or replace function public.approve_employee_registration(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null
+    or public.current_access_role() is distinct from 'Supervisor'
+    or public.current_approval_status() is distinct from 'approved' then
+    raise exception 'Only approved supervisors can approve registrations';
+  end if;
+
+  update public.profiles
+  set approval_status = 'approved'
+  where id = p_user_id
+    and access_role = 'Pegawai'
+    and approval_status = 'pending';
+
+  if not found then
+    raise exception 'Pending employee registration not found';
+  end if;
+end;
+$$;
+
 alter table public.profiles enable row level security;
 alter table public.staff enable row level security;
 alter table public.checklist_tasks enable row level security;
@@ -205,69 +298,102 @@ create policy "Users can read their own profile"
 drop policy if exists "Supervisors can read all staff" on public.staff;
 create policy "Supervisors can read all staff"
   on public.staff for select to authenticated
-  using (public.current_access_role() = 'Supervisor');
+  using (
+    public.current_access_role() = 'Supervisor'
+    and public.current_approval_status() = 'approved'
+  );
 
 drop policy if exists "Employees can read their own staff record" on public.staff;
 create policy "Employees can read their own staff record"
   on public.staff for select to authenticated
-  using (id = (select public.current_staff_id()));
+  using (
+    id = (select public.current_staff_id())
+    and public.current_approval_status() = 'approved'
+  );
 
 drop policy if exists "Supervisors can manage staff" on public.staff;
 create policy "Supervisors can manage staff"
   on public.staff for all to authenticated
-  using (public.current_access_role() = 'Supervisor')
-  with check (public.current_access_role() = 'Supervisor');
+  using (
+    public.current_access_role() = 'Supervisor'
+    and public.current_approval_status() = 'approved'
+  )
+  with check (
+    public.current_access_role() = 'Supervisor'
+    and public.current_approval_status() = 'approved'
+  );
 
 drop policy if exists "Users can read permitted checklist tasks" on public.checklist_tasks;
 create policy "Users can read permitted checklist tasks"
   on public.checklist_tasks for select to authenticated
   using (
-    public.current_access_role() = 'Supervisor'
-    or staff_id = (select public.current_staff_id())
+    public.current_approval_status() = 'approved'
+    and (
+      public.current_access_role() = 'Supervisor'
+      or staff_id = (select public.current_staff_id())
+    )
   );
 
 drop policy if exists "Users can update permitted checklist tasks" on public.checklist_tasks;
 create policy "Users can update permitted checklist tasks"
   on public.checklist_tasks for update to authenticated
   using (
-    public.current_access_role() = 'Supervisor'
-    or staff_id = (select public.current_staff_id())
+    public.current_approval_status() = 'approved'
+    and (
+      public.current_access_role() = 'Supervisor'
+      or staff_id = (select public.current_staff_id())
+    )
   )
   with check (
-    public.current_access_role() = 'Supervisor'
-    or staff_id = (select public.current_staff_id())
+    public.current_approval_status() = 'approved'
+    and (
+      public.current_access_role() = 'Supervisor'
+      or staff_id = (select public.current_staff_id())
+    )
   );
 
 drop policy if exists "Users can read permitted activities" on public.activities;
 create policy "Users can read permitted activities"
   on public.activities for select to authenticated
   using (
-    public.current_access_role() = 'Supervisor'
-    or staff_id = (select public.current_staff_id())
+    public.current_approval_status() = 'approved'
+    and (
+      public.current_access_role() = 'Supervisor'
+      or staff_id = (select public.current_staff_id())
+    )
   );
 
 drop policy if exists "Users can record permitted activities" on public.activities;
 create policy "Users can record permitted activities"
   on public.activities for insert to authenticated
   with check (
-    public.current_access_role() = 'Supervisor'
-    or (
-      staff_id = (select public.current_staff_id())
-      and exists (
-        select 1
-        from public.checklist_tasks as task
-        where task.id = activities.task_id
-          and task.staff_id = activities.staff_id
+    public.current_approval_status() = 'approved'
+    and (
+      public.current_access_role() = 'Supervisor'
+      or (
+        staff_id = (select public.current_staff_id())
+        and exists (
+          select 1
+          from public.checklist_tasks as task
+          where task.id = activities.task_id
+            and task.staff_id = activities.staff_id
+        )
       )
     )
   );
 
 revoke all on function public.current_access_role() from public;
 revoke all on function public.current_staff_id() from public;
+revoke all on function public.current_approval_status() from public;
 grant execute on function public.current_access_role() to authenticated;
 grant execute on function public.current_staff_id() to authenticated;
+grant execute on function public.current_approval_status() to authenticated;
 revoke all on function public.initialize_employee_profile(jsonb) from public;
 grant execute on function public.initialize_employee_profile(jsonb) to authenticated;
+revoke all on function public.list_pending_employee_approvals() from public;
+grant execute on function public.list_pending_employee_approvals() to authenticated;
+revoke all on function public.approve_employee_registration(uuid) from public;
+grant execute on function public.approve_employee_registration(uuid) to authenticated;
 grant usage on schema public to authenticated;
 revoke insert, update, delete on public.profiles from anon, authenticated;
 grant select on public.profiles to authenticated;
@@ -290,6 +416,7 @@ create policy "Employees upload their own evidence"
   on storage.objects for insert to authenticated
   with check (
     bucket_id = 'evidence'
+    and public.current_approval_status() = 'approved'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
@@ -298,6 +425,7 @@ create policy "Users read permitted evidence"
   on storage.objects for select to authenticated
   using (
     bucket_id = 'evidence'
+    and public.current_approval_status() = 'approved'
     and (
       (storage.foldername(name))[1] = (select auth.uid())::text
       or public.current_access_role() = 'Supervisor'
@@ -309,5 +437,6 @@ create policy "Employees delete their own evidence"
   on storage.objects for delete to authenticated
   using (
     bucket_id = 'evidence'
+    and public.current_approval_status() = 'approved'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );

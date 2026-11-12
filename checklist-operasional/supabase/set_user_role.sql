@@ -20,7 +20,11 @@ begin
   end if;
 
   update public.profiles
-  set access_role = target_role
+  set access_role = target_role,
+      approval_status = case
+        when target_role = 'Supervisor' then 'approved'
+        else approval_status
+      end
   where id = target_user_id;
 
   if not found then

@@ -1172,6 +1172,78 @@
   background: #eaf3f8;
 }
 
+.approvals-panel {
+  overflow: hidden;
+}
+
+.approval-list {
+  display: grid;
+}
+
+.approval-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-top: 1px solid #edf0ed;
+}
+
+.approval-details {
+  min-width: 0;
+  display: grid;
+  flex: 1;
+  gap: 4px;
+}
+
+.approval-details strong {
+  color: #34463c;
+  font-size: 12px;
+}
+
+.approval-details span,
+.approval-details small {
+  overflow-wrap: anywhere;
+  color: #718078;
+  font-size: 10px;
+}
+
+.approval-details small i {
+  padding: 0 3px;
+  font-style: normal;
+}
+
+.approval-button {
+  min-height: 34px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  background: #087c57;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.approval-button:hover:not(:disabled) {
+  background: #066846;
+}
+
+.approval-button:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
+.approval-empty {
+  border-top: 1px solid #edf0ed;
+}
+
 .role-panel .panel-header {
   padding-bottom: 14px;
 }
@@ -1532,6 +1604,24 @@
   box-shadow: 0 18px 55px rgb(22 53 35 / 9%);
 }
 
+.approval-pending-card .login-heading {
+  margin-top: 17px;
+}
+
+.approval-pending-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #8a6410;
+  background: #fff5d8;
+}
+
+.approval-pending-card .login-submit {
+  margin-top: 8px;
+}
+
 .login-brand {
   display: inline-flex;
   align-items: center;
@@ -1599,6 +1689,42 @@
 
 .login-form input::placeholder {
   color: #a4ada7;
+}
+
+.password-input {
+  position: relative;
+  display: block;
+}
+
+.login-form .password-input input {
+  padding-right: 40px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #718078;
+  background: transparent;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  color: #00529b;
+  background: #f1f6f9;
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid #4d9bd0;
+  outline-offset: 1px;
 }
 
 .login-form input:focus,
@@ -3047,6 +3173,20 @@ button.task-checkbox:hover {
     justify-self: start;
     margin-top: 0;
     font-size: 8px;
+  }
+
+  .approval-card {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 12px;
+  }
+
+  .approval-details {
+    flex-basis: calc(100% - 55px);
+  }
+
+  .approval-button {
+    margin-left: 52px;
   }
 
   .evidence-modal-backdrop {
