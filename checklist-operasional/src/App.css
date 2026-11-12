@@ -37,9 +37,10 @@
   background: #fff;
 }
 
-.brand-mark svg {
-  width: 25px;
-  height: 25px;
+.brand-mark img {
+  width: 39px;
+  height: 39px;
+  object-fit: contain;
 }
 
 .brand-copy,
@@ -1467,6 +1468,32 @@
 
 .activity-list {
   border-top: 1px solid #edf0ed;
+}
+
+.activity-role-group + .activity-role-group {
+  border-top: 1px solid #e6ece8;
+}
+
+.activity-role-heading {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 17px;
+  background: #f7f9f8;
+}
+
+.activity-role-heading h3 {
+  margin: 0;
+  color: #405a6b;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.activity-role-heading span {
+  color: #718078;
+  font-size: 9px;
 }
 
 .activity-row {

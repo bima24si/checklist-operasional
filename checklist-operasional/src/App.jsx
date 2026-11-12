@@ -6,51 +6,123 @@ const roles = ['Teller', 'Customer Service', 'Relationship Manager', 'Satpam']
 
 const taskTemplates = [
   {
-    role: 'Teller',
+    role: 'Satpam',
     session: 'Pagi',
-    deadline: '07:45',
-    title: 'Hitung modal kas harian',
-    description: 'Pastikan jumlah fisik modal kas sesuai dengan catatan awal hari.',
+    deadline: '07:15',
+    title: 'Doa pagi',
+    description: 'Mengikuti doa pagi sebelum memulai kegiatan operasional.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Satpam',
+    session: 'Pagi',
+    deadline: '16:00',
+    title: 'Tanyakan kebutuhan transaksi nasabah',
+    description: 'Menyapa nasabah dan menanyakan keperluan transaksinya selama layanan banking.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Satpam',
+    session: 'Pagi',
+    deadline: '16:00',
+    title: 'Arahkan nasabah ke mesin digital',
+    description: 'Mengarahkan transaksi nasabah ke mesin Digital (ATM dan CRM).',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Satpam',
+    session: 'Pagi',
+    deadline: '16:00',
+    title: 'Edukasi transaksi melalui BRIMO',
+    description: 'Mengedukasi nasabah agar bertransaksi melalui BRIMO.',
     type: 'CHECKBOX',
   },
   {
     role: 'Teller',
     session: 'Pagi',
-    deadline: '07:45',
-    title: 'Uji cetak printer passbook',
-    description: 'Periksa hasil cetak dan pastikan tinta tercetak jelas.',
+    deadline: '07:15',
+    title: 'Doa pagi',
+    description: 'Mengikuti doa pagi sebelum memulai kegiatan operasional.',
     type: 'CHECKBOX',
   },
   {
     role: 'Teller',
     session: 'Pagi',
-    deadline: '07:45',
-    title: 'Dokumentasikan laci kasir',
-    description: 'Foto laci kasir dalam keadaan rapi dan terkunci sebelum layanan.',
-    type: 'CHECKBOX_WITH_IMAGE',
+    deadline: '07:30',
+    title: 'Tambahkan kas ke SPV',
+    description: 'Mengambil tambahan kas dan menyerahkannya kepada SPV.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Teller',
+    session: 'Pagi',
+    deadline: '14:30',
+    title: 'Layanan transaksi tunai',
+    description: 'Melayani transaksi tunai nasabah dari pukul 08.00 sampai 14.30.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Teller',
+    session: 'Sore',
+    deadline: '15:00',
+    title: 'Periksa dan setorkan kas ke SPV',
+    description: 'Memeriksa kas dan menyetorkannya kepada SPV dari pukul 14.30 sampai 15.00.',
+    type: 'CHECKBOX',
   },
   {
     role: 'Teller',
     session: 'Sore',
     deadline: '16:00',
-    title: 'Tutup dan rekonsiliasi kas',
-    description: 'Hitung sisa kas, cocokkan saldo, lalu setor dan kunci di vault bersama supervisor.',
+    title: 'Susun bukti transaksi AATR',
+    description: 'Menyusun bukti transaksi AATR dan menyerahkannya kepada SPV.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Teller',
+    session: 'Sore',
+    deadline: '16:30',
+    title: 'Kegiatan roleplay',
+    description: 'Mengikuti kegiatan roleplay sesuai jadwal dari pukul 16.00 sampai 16.30.',
     type: 'CHECKBOX',
   },
   {
     role: 'Customer Service',
     session: 'Pagi',
-    deadline: '07:45',
-    title: 'Siapkan area layanan nasabah',
-    description: 'Bersihkan counter dan pastikan dokumen formulir tersedia serta tertata.',
+    deadline: '07:15',
+    title: 'Doa pagi',
+    description: 'Mengikuti doa pagi sebelum memulai kegiatan operasional.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Customer Service',
+    session: 'Pagi',
+    deadline: '07:30',
+    title: 'Periksa kartu dan stok kartu',
+    description: 'Memeriksa kartu dan meminta tambahan stok kartu kepada SPV.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Customer Service',
+    session: 'Pagi',
+    deadline: '16:00',
+    title: 'Layanan transaksi non-tunai',
+    description: 'Melayani transaksi non-tunai nasabah dari pukul 08.00 sampai 16.00.',
     type: 'CHECKBOX',
   },
   {
     role: 'Customer Service',
     session: 'Sore',
     deadline: '16:30',
-    title: 'Arsipkan formulir pembukaan rekening',
-    description: 'Simpan formulir fisik ke dalam lemari arsip yang terkunci.',
+    title: 'Register bukti transaksi',
+    description: 'Meregister bukti transaksi dan menyerahkannya kepada SPV dari pukul 16.00 sampai 16.30.',
+    type: 'CHECKBOX',
+  },
+  {
+    role: 'Customer Service',
+    session: 'Sore',
+    deadline: '16:30',
+    title: 'Kegiatan roleplay',
+    description: 'Mengikuti kegiatan roleplay sesuai jadwal dari pukul 16.00 sampai 16.30.',
     type: 'CHECKBOX',
   },
   {
@@ -83,22 +155,6 @@ const taskTemplates = [
     deadline: '16:30',
     title: 'Simpan berkas kredit dan dokumen hukum',
     description: 'Rapikan berkas fisik jaminan dan simpan ke lemari arsip terkunci.',
-    type: 'CHECKBOX',
-  },
-  {
-    role: 'Satpam',
-    session: 'Pagi',
-    deadline: '07:15',
-    title: 'Periksa CCTV, ATM, dan area luar',
-    description: 'Pastikan CCTV berfungsi, ATM center rapi, dan area luar terpantau.',
-    type: 'CHECKBOX',
-  },
-  {
-    role: 'Satpam',
-    session: 'Sore',
-    deadline: '17:00',
-    title: 'Lakukan pemeriksaan akhir gedung',
-    description: 'Matikan AC dan PC, kunci ruang arsip, lalu gembok pintu dan gerbang.',
     type: 'CHECKBOX',
   },
 ]
@@ -247,7 +303,6 @@ function App() {
   const [showLoginPassword, setShowLoginPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loginStaffRole, setLoginStaffRole] = useState(roles[0])
-  const [loginUnit, setLoginUnit] = useState('')
   const [loginError, setLoginError] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
   const [evidenceError, setEvidenceError] = useState('')
@@ -315,8 +370,8 @@ function App() {
         if (profile.access_role === 'Pegawai' && !profile.staff_id) {
           const employeeRole = session.user.user_metadata?.job_role
           const employeeTasks = taskTemplates
-            .map((template, taskIndex) => ({ ...template, taskIndex }))
             .filter((template) => template.role === employeeRole)
+            .map((template, taskIndex) => ({ ...template, taskIndex }))
             .map((template) => ({
               task_index: template.taskIndex,
               session: template.session,
@@ -338,7 +393,7 @@ function App() {
 
         const [staffResult, tasksResult, activitiesResult, approvalsResult] = await Promise.all([
           supabase.from('staff').select('*').order('name'),
-          supabase.from('checklist_tasks').select('*').order('id'),
+          supabase.from('checklist_tasks').select('*').eq('is_active', true).order('id'),
           supabase.from('activities').select('*').order('timestamp', { ascending: false }),
           profile.access_role === 'Supervisor'
             ? supabase.rpc('list_pending_employee_approvals')
@@ -469,6 +524,10 @@ function App() {
   const myTasks = tasksWithStatus.filter((task) =>
     task.staffId === checklistStaffId && task.session === session,
   )
+  const sessionDeadline = myTasks.reduce(
+    (latest, task) => task.deadline > latest ? task.deadline : latest,
+    '',
+  )
   const tasksWithNotes = dashboardTasks.filter((task) => task.obstacleNote?.trim())
   const visibleMyTasks = myTasks.filter((task) => {
     if (taskFilter === 'Semua') return true
@@ -482,6 +541,12 @@ function App() {
       && (!activityQuery || `${activity.staffName} ${activity.taskTitle} ${activity.action}`.toLocaleLowerCase().includes(activityQuery.toLocaleLowerCase())),
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const groupedActivities = roles
+    .map((role) => ({
+      role,
+      activities: visibleActivities.filter((activity) => activity.role === role),
+    }))
+    .filter((group) => group.activities.length > 0)
 
   async function recordActivity(task, action) {
     const activity = {
@@ -654,7 +719,6 @@ function App() {
 
     const email = loginEmail.trim().toLocaleLowerCase()
     const name = loginName.trim()
-    const unitName = loginUnit.trim()
     if (!email || (authMode === 'register' && !name)) {
       setLoginError(authMode === 'register' ? 'Email dan nama lengkap wajib diisi.' : 'Email wajib diisi.')
       return
@@ -671,10 +735,6 @@ function App() {
       setLoginError('Konfirmasi password tidak sama.')
       return
     }
-    if (authMode === 'register' && !unitName) {
-      setLoginError('Unit kerja wajib diisi.')
-      return
-    }
 
     setAuthBusy(true)
     try {
@@ -687,7 +747,7 @@ function App() {
             data: {
               full_name: name,
               job_role: loginStaffRole,
-              unit_name: unitName,
+              unit_name: 'kcp iskandar',
             },
           },
         })
@@ -777,12 +837,7 @@ function App() {
           <form className="login-form" onSubmit={submitAuthentication}>
             {authMode === 'register' && <label>Nama lengkap<input autoComplete="name" value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Masukkan nama lengkap" /></label>}
             <label>Email<input type="email" autoComplete="email" required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="nama@contoh.com" /></label>
-            {authMode === 'register' && (
-              <>
-                <label>Role pekerjaan<select value={loginStaffRole} onChange={(event) => setLoginStaffRole(event.target.value)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>
-                <label>Unit kerja<input value={loginUnit} onChange={(event) => setLoginUnit(event.target.value)} placeholder="Masukkan nama cabang atau unit" /></label>
-              </>
-            )}
+            {authMode === 'register' && <label>Role pekerjaan<select value={loginStaffRole} onChange={(event) => setLoginStaffRole(event.target.value)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>}
             <label>Password
               <span className="password-input">
                 <input type={showLoginPassword ? 'text' : 'password'} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 8 karakter)'} />
@@ -829,10 +884,7 @@ function App() {
       <aside className="sidebar">
         <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setPage('dashboard') }}>
           <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" focusable="false">
-              <path fill="#00529b" d="M5 8h14v5H5zm0 8h22v5H5zm0 8h14v5H5z" />
-              <path fill="#f4c542" d="M21 8h6v5h-6zm-4 16h10v5H17z" />
-            </svg>
+            <img src="/bri-logo.png" alt="" />
           </span>
           <span className="brand-copy">
             <strong>BRI</strong>
@@ -1131,14 +1183,22 @@ function App() {
                 </div>
                 {visibleActivities.length ? (
                   <div className="activity-list">
-                    {visibleActivities.map((activity) => (
-                      <article className="activity-row" key={activity.id}>
-                        <span className={`activity-event-icon ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-event-undo' : ''} ${activity.action === 'Bukti foto diunggah' ? 'activity-event-evidence' : ''}`}><Icon name={activity.action === 'Bukti foto diunggah' ? 'camera' : activity.action === 'Penyelesaian dibatalkan' ? 'close' : 'check'} size={16} /></span>
-                        <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
-                        <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
-                        <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
-                        <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
-                      </article>
+                    {groupedActivities.map((group) => (
+                      <section className="activity-role-group" key={group.role}>
+                        <header className="activity-role-heading">
+                          <h3>{group.role}</h3>
+                          <span>{group.activities.length} aktivitas</span>
+                        </header>
+                        {group.activities.map((activity) => (
+                          <article className="activity-row" key={activity.id}>
+                            <span className={`activity-event-icon ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-event-undo' : ''} ${activity.action === 'Bukti foto diunggah' ? 'activity-event-evidence' : ''}`}><Icon name={activity.action === 'Bukti foto diunggah' ? 'camera' : activity.action === 'Penyelesaian dibatalkan' ? 'close' : 'check'} size={16} /></span>
+                            <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
+                            <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
+                            <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
+                            <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
+                          </article>
+                        ))}
+                      </section>
                     ))}
                   </div>
                 ) : (
@@ -1178,7 +1238,7 @@ function App() {
               {checklistStaff ? (
                 <section className="checklist-overview">
                   <div><span className="staff-avatar large-avatar">{checklistStaff.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><span><small>CHECKLIST STAF</small><strong>{checklistStaff.name}</strong><em>{checklistStaff.role} <i>·</i> {checklistStaff.unitName}</em></span></div>
-                  <div className="session-deadline"><Icon name="clock" size={17} /><span>Deadline sesi <strong>{myTasks[0]?.deadline ?? '—'} WIB</strong></span></div>
+                  <div className="session-deadline"><Icon name="clock" size={17} /><span>Deadline sesi <strong>{sessionDeadline || '—'} WIB</strong></span></div>
                   <div className="session-progress"><strong>{myTasks.filter((task) => task.status === 'COMPLETED').length}<span>/{myTasks.length}</span></strong><small>tugas selesai</small><div className="mini-progress"><span style={{ width: `${myTasks.length ? (myTasks.filter((task) => task.status === 'COMPLETED').length / myTasks.length) * 100 : 0}%` }} /></div></div>
                 </section>
               ) : (
@@ -1187,7 +1247,7 @@ function App() {
 
               {checklistStaff && <section className="panel tasks-panel">
                 <div className="panel-header task-panel-header">
-                  <div><h2>Tugas sesi {session.toLowerCase()}</h2><p>{myTasks.length} langkah wajib · Deadline {myTasks[0]?.deadline ?? '—'} WIB</p></div>
+                  <div><h2>Tugas sesi {session.toLowerCase()}</h2><p>{myTasks.length} langkah wajib · Deadline {sessionDeadline || '—'} WIB</p></div>
                   <label className="select-field compact-select"><Icon name="filter" size={16} /><select value={taskFilter} onChange={(event) => setTaskFilter(event.target.value)} aria-label="Filter status tugas"><option>Semua</option><option>Belum selesai</option><option>Selesai</option></select></label>
                 </div>
                 <div className="task-list">
@@ -1202,15 +1262,13 @@ function App() {
                       <div className="task-description">
                         <strong>{task.title}</strong>
                         <span>{task.description}</span>
-                        {task.type === 'CHECKBOX_WITH_IMAGE' && (
-                          <div className="evidence-line">
-                            {task.evidence
-                              ? <button type="button" className="evidence-preview-button" onClick={() => openEvidencePreview(task)}><img className="evidence-thumb" src={task.evidence} alt="" /><span>Lihat foto bukti</span></button>
-                              : <><Icon name="camera" size={14} /><span>Bukti foto wajib</span></>}
-                            {!task.completed && <button className="upload-button" onClick={() => openEvidenceUpload(task.id)}>Unggah foto</button>}
-                            {task.completed && <button className="replace-button" onClick={() => openEvidenceUpload(task.id)}>Ganti foto</button>}
-                          </div>
-                        )}
+                        <div className="evidence-line">
+                          {task.evidence
+                            ? <button type="button" className="evidence-preview-button" onClick={() => openEvidencePreview(task)}><img className="evidence-thumb" src={task.evidence} alt="" /><span>Lihat foto bukti</span></button>
+                            : <><Icon name="camera" size={14} /><span>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Bukti foto wajib' : 'Foto bukti opsional'}</span></>}
+                          {!task.completed && <button className="upload-button" onClick={() => openEvidenceUpload(task.id)}>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Unggah foto' : 'Tambah foto'}</button>}
+                          {task.completed && <button className="replace-button" onClick={() => openEvidenceUpload(task.id)}>{task.evidence ? 'Ganti foto' : 'Tambah foto'}</button>}
+                        </div>
                         <div className="obstacle-entry">
                           {task.obstacleNote && !openNoteIds[task.id] && (
                             <div className="saved-obstacle-note"><Icon name="note" size={14} /><span><strong>Catatan kendala:</strong> {task.obstacleNote}</span></div>

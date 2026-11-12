@@ -53,8 +53,12 @@ create table if not exists public.checklist_tasks (
   evidence_path text not null default '',
   obstacle_note text not null default '',
   obstacle_note_updated_at timestamptz,
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.checklist_tasks
+  add column if not exists is_active boolean not null default true;
 
 create table if not exists public.activities (
   id text primary key,
@@ -68,6 +72,112 @@ create table if not exists public.activities (
   action text not null,
   timestamp timestamptz not null default now()
 );
+
+update public.checklist_tasks
+set is_active = false
+where role in ('Satpam', 'Teller', 'Customer Service')
+  and id not like '%-v2-%'
+  and is_active;
+
+with task_templates as (
+  select
+    'Satpam'::text as role,
+    template.*
+  from jsonb_to_recordset($satpam$[
+    {"task_index":0,"session":"Pagi","deadline":"07:15","title":"Doa pagi","description":"Mengikuti doa pagi sebelum memulai kegiatan operasional.","task_type":"CHECKBOX"},
+    {"task_index":1,"session":"Pagi","deadline":"16:00","title":"Tanyakan kebutuhan transaksi nasabah","description":"Menyapa nasabah dan menanyakan keperluan transaksinya selama layanan banking.","task_type":"CHECKBOX"},
+    {"task_index":2,"session":"Pagi","deadline":"16:00","title":"Arahkan nasabah ke mesin digital","description":"Mengarahkan transaksi nasabah ke mesin Digital (ATM dan CRM).","task_type":"CHECKBOX"},
+    {"task_index":3,"session":"Pagi","deadline":"16:00","title":"Edukasi transaksi melalui BRIMO","description":"Mengedukasi nasabah agar bertransaksi melalui BRIMO.","task_type":"CHECKBOX"}
+  ]$satpam$::jsonb) as template(
+    task_index integer,
+    session text,
+    deadline text,
+    title text,
+    description text,
+    task_type text
+  )
+
+  union all
+
+  select
+    'Teller'::text as role,
+    template.*
+  from jsonb_to_recordset($teller$[
+    {"task_index":0,"session":"Pagi","deadline":"07:15","title":"Doa pagi","description":"Mengikuti doa pagi sebelum memulai kegiatan operasional.","task_type":"CHECKBOX"},
+    {"task_index":1,"session":"Pagi","deadline":"07:30","title":"Tambahkan kas ke SPV","description":"Mengambil tambahan kas dan menyerahkannya kepada SPV.","task_type":"CHECKBOX"},
+    {"task_index":2,"session":"Pagi","deadline":"14:30","title":"Layanan transaksi tunai","description":"Melayani transaksi tunai nasabah dari pukul 08.00 sampai 14.30.","task_type":"CHECKBOX"},
+    {"task_index":3,"session":"Sore","deadline":"15:00","title":"Periksa dan setorkan kas ke SPV","description":"Memeriksa kas dan menyetorkannya kepada SPV dari pukul 14.30 sampai 15.00.","task_type":"CHECKBOX"},
+    {"task_index":4,"session":"Sore","deadline":"16:00","title":"Susun bukti transaksi AATR","description":"Menyusun bukti transaksi AATR dan menyerahkannya kepada SPV.","task_type":"CHECKBOX"},
+    {"task_index":5,"session":"Sore","deadline":"16:30","title":"Kegiatan roleplay","description":"Mengikuti kegiatan roleplay sesuai jadwal dari pukul 16.00 sampai 16.30.","task_type":"CHECKBOX"}
+  ]$teller$::jsonb) as template(
+    task_index integer,
+    session text,
+    deadline text,
+    title text,
+    description text,
+    task_type text
+  )
+
+  union all
+
+  select
+    'Customer Service'::text as role,
+    template.*
+  from jsonb_to_recordset($customer_service$[
+    {"task_index":0,"session":"Pagi","deadline":"07:15","title":"Doa pagi","description":"Mengikuti doa pagi sebelum memulai kegiatan operasional.","task_type":"CHECKBOX"},
+    {"task_index":1,"session":"Pagi","deadline":"07:30","title":"Periksa kartu dan stok kartu","description":"Memeriksa kartu dan meminta tambahan stok kartu kepada SPV.","task_type":"CHECKBOX"},
+    {"task_index":2,"session":"Pagi","deadline":"16:00","title":"Layanan transaksi non-tunai","description":"Melayani transaksi non-tunai nasabah dari pukul 08.00 sampai 16.00.","task_type":"CHECKBOX"},
+    {"task_index":3,"session":"Sore","deadline":"16:30","title":"Register bukti transaksi","description":"Meregister bukti transaksi dan menyerahkannya kepada SPV dari pukul 16.00 sampai 16.30.","task_type":"CHECKBOX"},
+    {"task_index":4,"session":"Sore","deadline":"16:30","title":"Kegiatan roleplay","description":"Mengikuti kegiatan roleplay sesuai jadwal dari pukul 16.00 sampai 16.30.","task_type":"CHECKBOX"}
+  ]$customer_service$::jsonb) as template(
+    task_index integer,
+    session text,
+    deadline text,
+    title text,
+    description text,
+    task_type text
+  )
+)
+insert into public.checklist_tasks (
+  id,
+  staff_id,
+  staff_name,
+  role,
+  unit_id,
+  unit_name,
+  session,
+  deadline,
+  title,
+  description,
+  type,
+  is_active
+)
+select
+  staff.id || '-v2-' || task_templates.task_index,
+  staff.id,
+  staff.name,
+  staff.role,
+  staff.unit_name,
+  staff.unit_name,
+  task_templates.session,
+  task_templates.deadline,
+  task_templates.title,
+  task_templates.description,
+  task_templates.task_type,
+  true
+from public.staff as staff
+join task_templates on task_templates.role = staff.role
+on conflict (id) do update
+set staff_name = excluded.staff_name,
+    role = excluded.role,
+    unit_id = excluded.unit_id,
+    unit_name = excluded.unit_name,
+    session = excluded.session,
+    deadline = excluded.deadline,
+    title = excluded.title,
+    description = excluded.description,
+    type = excluded.type,
+    is_active = true;
 
 create index if not exists checklist_tasks_staff_id_idx on public.checklist_tasks (staff_id);
 create index if not exists activities_timestamp_idx on public.activities (timestamp desc);
@@ -175,9 +285,9 @@ begin
   select * into v_user from auth.users where id = v_user_id;
   v_name := nullif(v_user.raw_user_meta_data ->> 'full_name', '');
   v_role := nullif(v_user.raw_user_meta_data ->> 'job_role', '');
-  v_unit := nullif(v_user.raw_user_meta_data ->> 'unit_name', '');
+  v_unit := 'kcp iskandar';
 
-  if v_name is null or v_role not in ('Teller', 'Customer Service', 'Relationship Manager', 'Satpam') or v_unit is null then
+  if v_name is null or v_role not in ('Teller', 'Customer Service', 'Relationship Manager', 'Satpam') then
     raise exception 'Employee registration details are incomplete';
   end if;
 
@@ -199,7 +309,7 @@ begin
     deadline, title, description, type
   )
   select
-    v_staff_id || '-' || template.task_index,
+    v_staff_id || '-v2-' || template.task_index,
     v_staff_id,
     v_name,
     v_role,
@@ -250,7 +360,7 @@ begin
   return query
     select p.id, p.full_name, u.email::text,
       u.raw_user_meta_data ->> 'job_role',
-      u.raw_user_meta_data ->> 'unit_name',
+      coalesce(nullif(u.raw_user_meta_data ->> 'unit_name', ''), 'kcp iskandar'),
       p.created_at
     from public.profiles as p
     join auth.users as u on u.id = p.id

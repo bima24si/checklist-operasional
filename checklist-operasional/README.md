@@ -13,9 +13,10 @@ Jangan masukkan `service_role` key ke aplikasi atau ke file yang dikirim ke brow
 
 ## Membuat akun
 
-- Pendaftaran di aplikasi hanya membuat akun **Pegawai**. Pengguna memasukkan nama, email, role pekerjaan, unit kerja, dan password.
+- Pendaftaran di aplikasi hanya membuat akun **Pegawai**. Pengguna memasukkan nama, email, role pekerjaan, dan password. Unit kerja pegawai baru otomatis ditetapkan ke **kcp iskandar**.
 - Pendaftaran pegawai berstatus **menunggu persetujuan**. Pegawai belum dapat membuka aplikasi sampai supervisor menyetujui pendaftaran melalui menu **Persetujuan pegawai**.
 - Setelah disetujui, pegawai dapat masuk dan profil staf serta checklist dibuat saat sesi pertama.
+- Jadwal checklist Satpam, Teller, dan Customer Service mengikuti jadwal operasional terbaru di aplikasi. Menjalankan ulang `supabase/schema.sql` akan mengarsipkan tugas lama dan membuat tugas pengganti untuk pegawai yang sudah terdaftar; catatan, status, dan bukti foto lama tetap disimpan.
 - Profil yang sudah ada saat skema persetujuan dipasang tetap berstatus disetujui. Profil untuk akun Auth baru dibuat otomatis oleh trigger dengan status menunggu.
 - Siapkan setidaknya satu akun supervisor sebelum menerima pendaftaran pegawai baru. Buka `supabase/set_user_role.sql`, isi email akun yang sudah ada dan role `Supervisor`, lalu jalankan di **SQL Editor**. Script ini menetapkan akun supervisor sebagai disetujui untuk kebutuhan bootstrap.
 - Aplikasi tidak memberi izin kepada pengguna untuk mengubah role atau status persetujuan secara langsung. Persetujuan dilakukan melalui fungsi database yang hanya dapat dipanggil supervisor yang sudah disetujui.
