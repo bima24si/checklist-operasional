@@ -29,6 +29,12 @@ Jangan masukkan `service_role` key ke aplikasi atau ke file yang dikirim ke brow
 - Skema mengaktifkan RLS dan membuat bucket/policy Storage secara otomatis.
 - Data lama yang tersimpan di `localStorage` browser **tidak dimigrasikan otomatis**. Akun lokal sebelumnya juga tidak menjadi akun Supabase; buat akun baru setelah skema dipasang.
 
+## Struktur UI
+
+- Tailwind CSS v4 diproses melalui plugin Vite; gunakan utility Tailwind untuk kebutuhan styling baru.
+- Komponen UI bersama berada di `src/components`, sedangkan layar dashboard, persetujuan, aktivitas, dan checklist berada di `src/pages`.
+- Layar dimuat sesuai kebutuhan menggunakan `React.lazy` dan `Suspense`. Gaya lama di `App.css` dipertahankan agar tampilan yang ada tidak berubah saat migrasi bertahap.
+
 ## Menjalankan aplikasi
 
 ```sh

@@ -1,3 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bri-blue: #00529b;
+  --color-bri-gold: #f4c542;
+}
+
 :root {
   font-family: 'Segoe UI', Arial, sans-serif;
   color: #354c5d;
