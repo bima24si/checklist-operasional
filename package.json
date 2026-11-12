@@ -9,8 +9,5 @@
     "build": "npm --prefix checklist-operasional run build",
     "preview": "npm --prefix checklist-operasional run preview -- --host 0.0.0.0",
     "lint": "npm --prefix checklist-operasional run lint"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.119.0"
   }
 }
