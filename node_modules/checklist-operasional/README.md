@@ -5,7 +5,7 @@ Dashboard checklist dan kepatuhan operasional dengan Supabase Auth, Postgres, Ro
 ## Konfigurasi
 
 1. Nilai URL project dan publishable key Supabase di `.env.local`. Contohnya tersedia di `.env.example`.
-2. Di Supabase Dashboard, buka **SQL Editor**, jalankan seluruh isi `supabase/schema.sql`. Jalankan ulang script ini untuk menerapkan perubahan skema persetujuan secara aman; jika tabel `public` sebelumnya dihapus, script lengkap ini akan membuatnya kembali.
+2. Di Supabase Dashboard, buka **SQL Editor**, jalankan seluruh isi `supabase/schema.sql`. Jalankan ulang script ini untuk menerapkan pembaruan skema, termasuk penyimpanan referensi foto di riwayat aktivitas; jika tabel `public` sebelumnya dihapus, script lengkap ini akan membuatnya kembali.
 3. Pastikan **Authentication > Providers > Email** aktif. Jika konfirmasi email diaktifkan, pegawai harus mengonfirmasi alamatnya sebelum login.
 4. Mulai ulang Vite setelah mengubah `.env.local`.
 

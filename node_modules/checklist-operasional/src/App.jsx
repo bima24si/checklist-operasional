@@ -404,9 +404,10 @@ function App() {
         if (activitiesResult.error) throw activitiesResult.error
         if (approvalsResult.error) throw approvalsResult.error
 
-        const evidencePaths = [...new Set(
-          tasksResult.data.map((task) => task.evidence_path).filter(Boolean),
-        )]
+        const evidencePaths = [...new Set([
+          ...tasksResult.data.map((task) => task.evidence_path),
+          ...activitiesResult.data.map((activity) => activity.evidence_path),
+        ].filter(Boolean))]
         const signedEvidence = await Promise.all(evidencePaths.map(async (path) => {
           const { data, error: signedUrlError } = await supabase.storage
             .from('evidence')
@@ -451,6 +452,10 @@ function App() {
           taskTitle: activity.task_title,
           session: activity.session,
           action: activity.action,
+          evidencePath: activity.evidence_path || loadedTasks.find((task) => task.id === activity.task_id)?.evidencePath || '',
+          evidence: evidenceUrlByPath.get(activity.evidence_path)
+            || loadedTasks.find((task) => task.id === activity.task_id)?.evidence
+            || '',
           timestamp: activity.timestamp,
         }))
         setStaff(loadedStaff)
@@ -548,7 +553,7 @@ function App() {
     }))
     .filter((group) => group.activities.length > 0)
 
-  async function recordActivity(task, action) {
+  async function recordActivity(task, action, evidencePath = '', evidence = task.evidence || '') {
     const activity = {
       id: `activity-${window.crypto.randomUUID()}`,
       staffId: task.staffId,
@@ -559,6 +564,8 @@ function App() {
       taskTitle: task.title,
       session: task.session,
       action,
+      evidencePath,
+      evidence,
       timestamp: new Date().toISOString(),
     }
     const { error } = await supabase.from('activities').insert({
@@ -571,6 +578,7 @@ function App() {
       task_title: activity.taskTitle,
       session: activity.session,
       action: activity.action,
+      evidence_path: activity.evidencePath,
       timestamp: activity.timestamp,
     })
     if (error) throw error
@@ -633,6 +641,27 @@ function App() {
     setEvidencePreview({ src: task.evidence, title: task.title })
   }
 
+  async function openActivityEvidence(activity) {
+    const task = tasks.find((item) => item.id === activity.taskId)
+    const evidencePath = activity.evidencePath || task?.evidencePath
+    if (!evidencePath) {
+      setBackendError(`Foto bukti untuk aktivitas "${activity.taskTitle}" tidak ditemukan.`)
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('evidence')
+        .createSignedUrl(evidencePath, 3600)
+      if (error) throw error
+      setEvidencePreview({ src: data.signedUrl, title: activity.taskTitle })
+      setBackendError('')
+    } catch (error) {
+      console.error('Foto bukti aktivitas gagal dimuat.', error)
+      setBackendError(`Foto bukti aktivitas gagal dimuat: ${error.message}`)
+    }
+  }
+
   function handleEvidenceChange(event) {
     const file = event.target.files?.[0]
     const taskId = uploadTaskRef.current
@@ -661,9 +690,9 @@ function App() {
           .upload(evidencePath, file, { contentType: file.type, upsert: false })
         if (uploadError) throw uploadError
         uploaded = true
-        await updateTask(task, { completed: true, evidencePath })
+        const updatedTask = await updateTask(task, { completed: true, evidencePath })
         taskSaved = true
-        await recordActivity(task, 'Bukti foto diunggah')
+        await recordActivity(task, 'Bukti foto diunggah', updatedTask.evidencePath, updatedTask.evidence)
         setEvidenceError('')
         setBackendError('')
       } catch (error) {
@@ -920,10 +949,6 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="security-note">
-            <span className="security-lock">✓</span>
-            <p><strong>Database Supabase</strong><br />Data tersinkron</p>
-          </div>
           <button className="profile-button" onClick={() => setLogoutConfirmOpen(true)}>
             <span className="avatar avatar-supervisor">{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
             <span className="profile-copy"><strong>{currentUser.name}</strong><small>{currentUser.accessRole === 'Supervisor' ? 'Supervisor' : currentUser.role}</small></span>
@@ -1194,7 +1219,14 @@ function App() {
                             <span className={`activity-event-icon ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-event-undo' : ''} ${activity.action === 'Bukti foto diunggah' ? 'activity-event-evidence' : ''}`}><Icon name={activity.action === 'Bukti foto diunggah' ? 'camera' : activity.action === 'Penyelesaian dibatalkan' ? 'close' : 'check'} size={16} /></span>
                             <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
                             <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
-                            <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
+                            <div className="activity-action-group">
+                              <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
+                              {activity.action === 'Bukti foto diunggah' && (
+                                <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(activity)}>
+                                  Lihat foto
+                                </button>
+                              )}
+                            </div>
                             <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
                           </article>
                         ))}

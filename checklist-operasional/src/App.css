@@ -1562,6 +1562,35 @@
   font-style: normal;
 }
 
+.activity-action-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.activity-photo-button {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 12px;
+  color: #00529b;
+  background: #eaf3f8;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.activity-photo-button:hover {
+  background: #dcecf5;
+}
+
+.activity-photo-button:focus-visible {
+  outline: 2px solid #00529b;
+  outline-offset: 2px;
+}
+
 .activity-action {
   width: fit-content;
   padding: 5px 8px;
@@ -3190,7 +3219,7 @@ button.task-checkbox:hover {
     grid-column: 2 / -1;
   }
 
-  .activity-action {
+  .activity-action-group {
     grid-column: 3;
     grid-row: 1;
   }

@@ -70,8 +70,12 @@ create table if not exists public.activities (
   task_title text not null,
   session text not null,
   action text not null,
+  evidence_path text not null default '',
   timestamp timestamptz not null default now()
 );
+
+alter table public.activities
+  add column if not exists evidence_path text not null default '';
 
 update public.checklist_tasks
 set is_active = false
