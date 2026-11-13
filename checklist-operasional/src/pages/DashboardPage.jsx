@@ -2,7 +2,10 @@ import { Icon, StatusBadge } from '../components/ui.jsx'
 import { roles } from '../data/roles.js'
 import { formatToday, formatActivityTimestamp } from '../lib/dateTime.js'
 
-export default function DashboardPage({ overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit, setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount, compliance, tasksWithNotes, staff, setPage }) {
+export default function DashboardPage({ overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit, setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount, compliance, tasksWithNotes, staff, setPage, activities, openActivityEvidence, refreshSupervisorActivities, activityRefreshBusy, activityRefreshError }) {
+  const recentEvidence = activities.filter((activity) => activity.action === 'Bukti foto diunggah').slice(0, 5)
+  const reportRoles = [...new Set([...roles, ...dashboardTasks.map((task) => task.role)])].filter(Boolean)
+
   return (
 <>
               <section className="page-heading">
@@ -44,6 +47,39 @@ export default function DashboardPage({ overdueTasks, filteredOverdueTasks, sele
                 </article>
               </section>
 
+              <section className="panel recent-evidence-panel">
+                <div className="panel-header">
+                  <div><h2>Bukti foto terbaru</h2><p>Foto yang diunggah pegawai pada checklist</p></div>
+                  <div className="recent-evidence-actions">
+                    <button type="button" className="plain-button" onClick={() => void refreshSupervisorActivities()} disabled={activityRefreshBusy}>
+                      {activityRefreshBusy ? 'Memperbarui...' : 'Perbarui'}
+                    </button>
+                    <button type="button" className="activity-photo-button" onClick={() => setPage('activity')}>Riwayat aktivitas</button>
+                  </div>
+                </div>
+                {activityRefreshError && <p className="recent-evidence-error" role="alert">{activityRefreshError}</p>}
+                {recentEvidence.length ? (
+                  <div className="recent-evidence-list">
+                    {recentEvidence.map((activity) => (
+                      <article className="recent-evidence-row" key={activity.id}>
+                        <span className="activity-event-icon activity-event-evidence"><Icon name="camera" size={16} /></span>
+                        <div className="recent-evidence-copy">
+                          <strong>{activity.staffName}</strong>
+                          <span>{activity.taskTitle} · {activity.role} · {formatActivityTimestamp(activity.timestamp)} WIB</span>
+                        </div>
+                        <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(activity)}>Lihat foto</button>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state recent-evidence-empty">
+                    <span className="empty-check"><Icon name="camera" size={19} /></span>
+                    <strong>Belum ada bukti foto</strong>
+                    <span>Foto dari pegawai akan muncul di sini setelah diunggah.</span>
+                  </div>
+                )}
+              </section>
+
               <section className="dashboard-lower">
                 <article className="panel attention-panel" id="attention-list">
                   <div className="panel-header">
@@ -52,7 +88,7 @@ export default function DashboardPage({ overdueTasks, filteredOverdueTasks, sele
                   </div>
                   <div className="filter-row">
                     <label className="search-field"><Icon name="search" size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nama atau tugas..." /></label>
-                    <label className="select-field"><Icon name="filter" size={16} /><select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)} aria-label="Filter role"><option>Semua role</option>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>
+                    <label className="select-field"><Icon name="filter" size={16} /><select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)} aria-label="Filter role"><option>Semua role</option>{reportRoles.map((role) => <option key={role}>{role}</option>)}</select></label>
                     <label className="select-field unit-select"><Icon name="building" size={16} /><select value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)} aria-label="Filter unit"><option value="Semua unit">Semua unit</option>{unitNames.map((unitName) => <option key={unitName} value={unitName}>{unitName}</option>)}</select></label>
                   </div>
                   {filteredOverdueTasks.length > 0 ? (
@@ -79,7 +115,7 @@ export default function DashboardPage({ overdueTasks, filteredOverdueTasks, sele
                 <article className="panel role-panel">
                   <div className="panel-header"><div><h2>Status per role</h2><p>Persentase tugas yang diselesaikan</p></div></div>
                   <div className="role-progress-list">
-                    {roles.map((role, index) => {
+                    {reportRoles.map((role, index) => {
                       const roleTasks = dashboardTasks.filter((task) => task.role === role)
                       const roleDone = roleTasks.filter((task) => task.status === 'COMPLETED').length
                       const percent = roleTasks.length ? Math.round((roleDone / roleTasks.length) * 100) : 0

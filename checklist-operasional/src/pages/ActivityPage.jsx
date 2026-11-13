@@ -16,6 +16,8 @@ export default function ActivityPage({
   groupedActivities,
   openActivityEvidence,
 }) {
+  const activityRoles = [...new Set([...roles, ...activities.map((activity) => activity.role)])].filter(Boolean)
+
   return (
     <>
       <section className="page-heading">
@@ -52,7 +54,7 @@ export default function ActivityPage({
         </div>
         <div className="activity-filters">
           <label className="search-field"><Icon name="search" size={16} /><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} placeholder="Cari nama atau tugas..." /></label>
-          <label className="select-field"><Icon name="filter" size={16} /><select value={activityRole} onChange={(event) => setActivityRole(event.target.value)} aria-label="Filter aktivitas berdasarkan role"><option>Semua role</option>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>
+          <label className="select-field"><Icon name="filter" size={16} /><select value={activityRole} onChange={(event) => setActivityRole(event.target.value)} aria-label="Filter aktivitas berdasarkan role"><option>Semua role</option>{activityRoles.map((role) => <option key={role}>{role}</option>)}</select></label>
           <label className="select-field unit-select"><Icon name="building" size={16} /><select value={activityUnit} onChange={(event) => setActivityUnit(event.target.value)} aria-label="Filter aktivitas berdasarkan unit"><option value="Semua unit">Semua unit</option>{unitNames.map((unitName) => <option key={unitName} value={unitName}>{unitName}</option>)}</select></label>
         </div>
         {visibleActivities.length ? (

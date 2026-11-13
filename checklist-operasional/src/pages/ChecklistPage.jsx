@@ -121,7 +121,7 @@ export default function ChecklistPage({
         </div>
         <div className="task-panel-footer"><span><Icon name="alert" size={15} /> Tugas yang belum selesai setelah deadline otomatis ditandai terlambat.</span><span>Waktu terakhir diperbarui {clock.label} WIB</span></div>
       </section>}
-      <input ref={fileInputRef} className="hidden-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleEvidenceChange} />
+      <input ref={fileInputRef} className="hidden-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleEvidenceChange} />
       <footer className="page-footer"><span>BRI <span>·</span> Internal Compliance</span><span>Bukti foto tersimpan di Supabase.</span></footer>
     </>
   )

@@ -1,7 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { supabase, supabaseConfigured } from './supabase'
 import { Icon } from './components/ui.jsx'
+import Sidebar from './components/layout/Sidebar.jsx'
+import Topbar from './components/layout/Topbar.jsx'
+import LoginScreen from './components/auth/LoginScreen.jsx'
+import PendingApprovalScreen from './components/auth/PendingApprovalScreen.jsx'
+import EvidencePreviewModal from './components/modals/EvidencePreviewModal.jsx'
+import CameraModal from './components/modals/CameraModal.jsx'
+import LogoutConfirmationModal from './components/modals/LogoutConfirmationModal.jsx'
+import ProfileEditModal from './components/modals/ProfileEditModal.jsx'
 import { roles } from './data/roles.js'
 import { taskTemplates } from './data/taskTemplates.js'
 import { getTaskStatus, getWibTime } from './lib/dateTime.js'
@@ -10,6 +18,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'))
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage.jsx'))
 const ActivityPage = lazy(() => import('./pages/ActivityPage.jsx'))
 const ChecklistPage = lazy(() => import('./pages/ChecklistPage.jsx'))
+const EmployeesPage = lazy(() => import('./pages/EmployeesPage.jsx'))
 
 
 
@@ -37,6 +46,17 @@ async function getProfileByUserId(userId) {
   return data[0]
 }
 
+function getProfileSetupError(error) {
+  const message = error?.message ?? String(error)
+  if (/bucket not found/i.test(message)) {
+    return new Error('Bucket foto profil belum dibuat. Jalankan supabase/profile_features.sql di SQL Editor Supabase, lalu coba lagi.')
+  }
+  if (error?.code === 'PGRST202' || /update_own_profile_name.*schema cache|schema cache.*update_own_profile_name/i.test(message)) {
+    return new Error('Fitur ubah nama belum terpasang di Supabase. Jalankan supabase/profile_features.sql di SQL Editor, tunggu sebentar, lalu muat ulang aplikasi.')
+  }
+  return error instanceof Error ? error : new Error(message)
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [page, setPage] = useState('dashboard')
@@ -59,6 +79,7 @@ function App() {
   const [clock, setClock] = useState(getWibTime)
   const [notificationOpen, setNotificationOpen] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const [profileEditOpen, setProfileEditOpen] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const [loginName, setLoginName] = useState('')
   const [loginEmail, setLoginEmail] = useState('')
@@ -71,6 +92,8 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false)
   const [evidenceError, setEvidenceError] = useState('')
   const [evidencePreview, setEvidencePreview] = useState(null)
+  const [activityRefreshBusy, setActivityRefreshBusy] = useState(false)
+  const [activityRefreshError, setActivityRefreshError] = useState('')
   const [openNoteIds, setOpenNoteIds] = useState({})
   const [noteDrafts, setNoteDrafts] = useState({})
   const [query, setQuery] = useState('')
@@ -78,8 +101,16 @@ function App() {
   const [activityRole, setActivityRole] = useState('Semua role')
   const [activityUnit, setActivityUnit] = useState('Semua unit')
   const [authNotice, setAuthNotice] = useState('')
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraLoading, setCameraLoading] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraError, setCameraError] = useState('')
   const fileInputRef = useRef(null)
+  const cameraVideoRef = useRef(null)
+  const cameraStreamRef = useRef(null)
+  const cameraRequestIdRef = useRef(0)
   const uploadTaskRef = useRef(null)
+  const activityRefreshInFlightRef = useRef(false)
   const sessionLoadId = useRef(0)
   const registrationInProgress = useRef(false)
 
@@ -87,6 +118,17 @@ function App() {
     const timer = window.setInterval(() => setClock(getWibTime()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => () => {
+    cameraRequestIdRef.current += 1
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+  }, [])
+
+  useEffect(() => {
+    if (cameraOpen && cameraStreamRef.current && cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = cameraStreamRef.current
+    }
+  }, [cameraOpen, cameraLoading])
 
   useEffect(() => {
     if (!supabaseConfigured || !supabase) {
@@ -179,6 +221,15 @@ function App() {
           if (signedUrlError) throw signedUrlError
           return [path, data.signedUrl]
         }))
+        const avatarPath = session.user.user_metadata?.avatar_path ?? ''
+        let avatarUrl = ''
+        if (avatarPath) {
+          const { data: avatarData, error: avatarError } = await supabase.storage
+            .from('avatars')
+            .createSignedUrl(avatarPath, 3600)
+          if (avatarError) throw avatarError
+          avatarUrl = avatarData.signedUrl
+        }
         if (!active || requestId !== sessionLoadId.current) return
 
         const evidenceUrlByPath = new Map(signedEvidence)
@@ -235,6 +286,7 @@ function App() {
           role: loadedStaff.find((person) => person.id === profile.staff_id)?.role ?? profile.access_role,
           unitName: loadedStaff.find((person) => person.id === profile.staff_id)?.unitName ?? '',
           accessRole: profile.access_role,
+          avatarUrl,
         })
         setPage(profile.access_role === 'Supervisor' ? 'dashboard' : 'checklist')
       } catch (error) {
@@ -250,6 +302,16 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (registrationInProgress.current && event === 'SIGNED_IN') return
+      if (event === 'USER_UPDATED' && session?.user) {
+        setCurrentUser((user) => user && user.id === session.user.id
+          ? {
+            ...user,
+            email: session.user.email,
+            avatarPath: session.user.user_metadata?.avatar_path ?? user.avatarPath,
+          }
+          : user)
+        return
+      }
       window.setTimeout(() => {
         if (active) void loadSession(session)
       }, 0)
@@ -310,12 +372,83 @@ function App() {
       && (!activityQuery || `${activity.staffName} ${activity.taskTitle} ${activity.action}`.toLocaleLowerCase().includes(activityQuery.toLocaleLowerCase())),
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-  const groupedActivities = roles
+  const activityRoles = [...new Set([...roles, ...visibleActivities.map((activity) => activity.role)])]
+    .filter(Boolean)
+  const groupedActivities = activityRoles
     .map((role) => ({
       role,
       activities: visibleActivities.filter((activity) => activity.role === role),
     }))
     .filter((group) => group.activities.length > 0)
+
+  const refreshSupervisorActivities = useCallback(async () => {
+    if (!supabase || activityRefreshInFlightRef.current) return
+    activityRefreshInFlightRef.current = true
+    setActivityRefreshBusy(true)
+    try {
+      const latestTimestamp = activities[0]?.timestamp
+      let activitiesQuery = supabase.from('activities').select('*').order('timestamp', { ascending: false })
+      if (latestTimestamp) activitiesQuery = activitiesQuery.gte('timestamp', latestTimestamp)
+      const { data, error } = await activitiesQuery
+      if (error) throw error
+
+      const existingIds = new Set(activities.map((activity) => activity.id))
+      const newRows = (data ?? []).filter((activity) => !existingIds.has(activity.id))
+      if (!newRows.length) {
+        setActivityRefreshError('')
+        return
+      }
+
+      const evidencePathById = new Map(newRows.map((activity) => [
+        activity.id,
+        activity.evidence_path || tasks.find((task) => task.id === activity.task_id)?.evidencePath || '',
+      ]))
+      const evidencePaths = [...new Set([...evidencePathById.values()].filter(Boolean))]
+      const signedEvidence = await Promise.all(evidencePaths.map(async (path) => {
+        const { data: signedData, error: signedUrlError } = await supabase.storage
+          .from('evidence')
+          .createSignedUrl(path, 3600)
+        if (signedUrlError) throw signedUrlError
+        return [path, signedData.signedUrl]
+      }))
+      const evidenceUrlByPath = new Map(signedEvidence)
+      const newActivities = newRows.map((activity) => {
+        const evidencePath = evidencePathById.get(activity.id)
+        return {
+          id: activity.id,
+          staffId: activity.staff_id,
+          staffName: activity.staff_name,
+          role: activity.role,
+          unitName: activity.unit_name,
+          taskId: activity.task_id,
+          taskTitle: activity.task_title,
+          session: activity.session,
+          action: activity.action,
+          evidencePath,
+          evidence: evidenceUrlByPath.get(evidencePath) || '',
+          timestamp: activity.timestamp,
+        }
+      })
+      setActivities((currentActivities) => {
+        const currentIds = new Set(currentActivities.map((activity) => activity.id))
+        return [...newActivities.filter((activity) => !currentIds.has(activity.id)), ...currentActivities]
+          .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      })
+      setActivityRefreshError('')
+    } catch (error) {
+      console.error('Aktivitas terbaru gagal dimuat.', error)
+      setActivityRefreshError(`Aktivitas terbaru gagal dimuat: ${error.message}`)
+    } finally {
+      activityRefreshInFlightRef.current = false
+      setActivityRefreshBusy(false)
+    }
+  }, [activities, tasks])
+
+  useEffect(() => {
+    if (currentUser?.accessRole !== 'Supervisor') return undefined
+    const timer = window.setInterval(() => void refreshSupervisorActivities(), 30000)
+    return () => window.clearInterval(timer)
+  }, [currentUser?.accessRole, refreshSupervisorActivities])
 
   async function recordActivity(task, action, evidencePath = '', evidence = task.evidence || '') {
     const activity = {
@@ -394,10 +527,90 @@ function App() {
     }
   }
 
+  function stopCameraStream() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+    cameraStreamRef.current = null
+    if (cameraVideoRef.current) cameraVideoRef.current.srcObject = null
+    setCameraReady(false)
+  }
+
+  function closeCamera() {
+    cameraRequestIdRef.current += 1
+    stopCameraStream()
+    setCameraOpen(false)
+    setCameraLoading(false)
+  }
+
   function openEvidenceUpload(taskId) {
     setEvidenceError('')
     uploadTaskRef.current = taskId
+    setCameraError('')
+    setCameraReady(false)
+    setCameraOpen(true)
+    setCameraLoading(true)
+    const requestId = ++cameraRequestIdRef.current
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraLoading(false)
+      setCameraError('Kamera tidak tersedia. Buka aplikasi melalui HTTPS atau localhost, lalu pilih foto dari perangkat.')
+      return
+    }
+
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    }).then((stream) => {
+      if (requestId !== cameraRequestIdRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      cameraStreamRef.current = stream
+      setCameraLoading(false)
+    }).catch((error) => {
+      if (requestId !== cameraRequestIdRef.current) return
+      setCameraLoading(false)
+      if (!window.isSecureContext) {
+        setCameraError('Kamera memerlukan koneksi HTTPS atau localhost. Anda tetap bisa memilih foto dari perangkat.')
+      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setCameraError('Izin kamera ditolak. Izinkan akses kamera di pengaturan browser, atau pilih foto dari perangkat.')
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        setCameraError('Kamera tidak ditemukan. Periksa kamera perangkat, atau pilih foto dari perangkat.')
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        setCameraError('Kamera sedang digunakan aplikasi lain. Tutup aplikasi tersebut, atau pilih foto dari perangkat.')
+      } else {
+        setCameraError(`Kamera tidak dapat dibuka: ${error.message}`)
+      }
+    })
+  }
+
+  function openEvidenceFilePicker() {
     fileInputRef.current?.click()
+  }
+
+  function captureEvidencePhoto() {
+    const video = cameraVideoRef.current
+    if (!video?.videoWidth || !video.videoHeight) {
+      setCameraError('Kamera belum siap. Tunggu sebentar lalu coba lagi.')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight))
+    canvas.width = Math.round(video.videoWidth * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setCameraError('Foto gagal diproses. Silakan coba lagi.')
+      return
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setCameraError('Foto gagal diproses. Silakan coba lagi.')
+        return
+      }
+      closeCamera()
+      handleEvidenceFile(new File([blob], `bukti-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+    }, 'image/jpeg', 0.82)
   }
 
   function openEvidencePreview(task) {
@@ -428,10 +641,15 @@ function App() {
 
   function handleEvidenceChange(event) {
     const file = event.target.files?.[0]
-    const taskId = uploadTaskRef.current
     event.target.value = ''
-    if (!file || !taskId) return
+    if (!file) return
+    if (cameraOpen) closeCamera()
+    handleEvidenceFile(file)
+  }
 
+  function handleEvidenceFile(file) {
+    const taskId = uploadTaskRef.current
+    if (!file || !taskId) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setEvidenceError('Pilih gambar berformat JPG, PNG, atau WebP.')
       return
@@ -583,6 +801,73 @@ function App() {
     setNotificationOpen(false)
   }
 
+  async function saveProfileName(value) {
+    const name = value.trim()
+    if (!supabase) {
+      throw new Error('Konfigurasi Supabase belum tersedia.')
+    }
+    if (name.length < 2 || name.length > 100) {
+      throw new Error('Nama harus berisi 2 sampai 100 karakter.')
+    }
+
+    const { data, error } = await supabase.rpc('update_own_profile_name', {
+      p_full_name: name,
+    })
+    if (error) throw getProfileSetupError(error)
+    if (typeof data !== 'string') throw new Error('Nama profil tidak dikembalikan oleh server.')
+
+    setCurrentUser((user) => user ? { ...user, name: data } : user)
+    setStaff((current) => current.map((person) => person.id === checklistStaffId ? { ...person, name: data } : person))
+    setTasks((current) => current.map((task) => task.staffId === checklistStaffId ? { ...task, staffName: data } : task))
+    return data
+  }
+
+  async function saveProfileEmail(value) {
+    const email = value.trim().toLowerCase()
+    if (!supabase) throw new Error('Konfigurasi Supabase belum tersedia.')
+    if (!email || email === currentUser.email?.toLowerCase()) {
+      throw new Error('Masukkan alamat email baru yang berbeda.')
+    }
+
+    const { error } = await supabase.auth.updateUser({ email })
+    if (error) throw error
+  }
+
+  async function saveProfilePassword(value) {
+    if (!supabase) throw new Error('Konfigurasi Supabase belum tersedia.')
+    if (value.length < 8) throw new Error('Password baru minimal 8 karakter.')
+
+    const { error } = await supabase.auth.updateUser({ password: value })
+    if (error) throw error
+  }
+
+  async function uploadProfilePhoto(file) {
+    if (!supabase) throw new Error('Konfigurasi Supabase belum tersedia.')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      throw new Error('Pilih foto berformat JPG, PNG, atau WebP.')
+    }
+    if (file.size > 2 * 1024 * 1024) throw new Error('Ukuran foto maksimal 2 MB.')
+
+    const avatarPath = `${currentUser.id}/profile`
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(avatarPath, file, { contentType: file.type, cacheControl: '0', upsert: true })
+    if (uploadError) throw getProfileSetupError(uploadError)
+
+    const { data, error: signedUrlError } = await supabase.storage
+      .from('avatars')
+      .createSignedUrl(avatarPath, 3600)
+    if (signedUrlError) throw signedUrlError
+
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: { avatar_path: avatarPath },
+    })
+    if (metadataError) throw metadataError
+
+    setCurrentUser((user) => user ? { ...user, avatarUrl: data.signedUrl } : user)
+    return data.signedUrl
+  }
+
   async function approveRegistration(approval) {
     setApprovalBusyId(approval.user_id)
     setBackendError('')
@@ -603,6 +888,7 @@ function App() {
   const navItems = currentUser?.accessRole === 'Supervisor'
     ? [
       { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+      { id: 'employees', label: 'Daftar pegawai', icon: 'profile' },
       { id: 'approvals', label: 'Persetujuan pegawai', icon: 'checklist' },
       { id: 'activity', label: 'Riwayat aktivitas', icon: 'history' },
     ]
@@ -611,7 +897,8 @@ function App() {
   const dashboardPageProps = {
     overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit,
     setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount,
-    compliance, tasksWithNotes, staff, setPage,
+    compliance, tasksWithNotes, staff, setPage, activities, openActivityEvidence,
+    refreshSupervisorActivities, activityRefreshBusy, activityRefreshError,
   }
   const approvalsPageProps = { pendingApprovals, approvalBusyId, approveRegistration }
   const activityPageProps = {
@@ -619,6 +906,7 @@ function App() {
     setActivityRole, activityUnit, setActivityUnit, unitNames, groupedActivities,
     openActivityEvidence,
   }
+  const employeesPageProps = { staff }
   const checklistPageProps = {
     currentUser, session, setSession, sessionDeadline, clock, checklistStaff, myTasks,
     evidenceError, setEvidenceError, taskFilter, setTaskFilter, visibleMyTasks, toggleTask,
@@ -632,142 +920,65 @@ function App() {
 
   if (!currentUser) {
     return (
-      <main className="login-page">
-        <section className="login-card">
-          <a className="login-brand" href="#" onClick={(event) => event.preventDefault()}>
-            <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" focusable="false">
-                <path fill="#00529b" d="M5 8h14v5H5zm0 8h22v5H5zm0 8h14v5H5z" />
-                <path fill="#f4c542" d="M21 8h6v5h-6zm-4 16h10v5H17z" />
-              </svg>
-            </span>
-            <span className="brand-copy"><strong>BRI</strong><small>OPERASIONAL BANK</small></span>
-          </a>
-          <div className="login-heading"><span className="eyebrow"><span className="live-indicator" /> INTERNAL COMPLIANCE</span><h1>{authMode === 'login' ? 'Selamat datang' : 'Buat akun baru'}</h1><p>{authMode === 'login' ? 'Masuk untuk melanjutkan aktivitas operasional harian.' : 'Daftarkan akun untuk mengakses checklist operasional.'}</p></div>
-          {backendError && <p className="login-error" role="alert">{backendError}</p>}
-          <form className="login-form" onSubmit={submitAuthentication}>
-            {authMode === 'register' && <label>Nama lengkap<input autoComplete="name" value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Masukkan nama lengkap" /></label>}
-            <label>Email<input type="email" autoComplete="email" required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="nama@contoh.com" /></label>
-            {authMode === 'register' && <label>Role pekerjaan<select value={loginStaffRole} onChange={(event) => setLoginStaffRole(event.target.value)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>}
-            <label>Password
-              <span className="password-input">
-                <input type={showLoginPassword ? 'text' : 'password'} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder={authMode === 'login' ? 'Masukkan password' : 'Buat password (minimal 8 karakter)'} />
-                <button type="button" className="password-toggle" aria-label={showLoginPassword ? 'Sembunyikan password' : 'Tampilkan password'} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}><Icon name={showLoginPassword ? 'eyeOff' : 'eye'} size={17} /></button>
-              </span>
-            </label>
-            {authMode === 'register' && <label>Konfirmasi password
-              <span className="password-input">
-                <input type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" value={loginPasswordConfirm} onChange={(event) => setLoginPasswordConfirm(event.target.value)} placeholder="Masukkan ulang password" />
-                <button type="button" className="password-toggle" aria-label={showConfirmPassword ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((visible) => !visible)}><Icon name={showConfirmPassword ? 'eyeOff' : 'eye'} size={17} /></button>
-              </span>
-            </label>}
-            {loginError && <p className="login-error" role="alert">{loginError}</p>}
-            {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
-            <button type="submit" className="login-submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? 'Memproses...' : authMode === 'login' ? 'Masuk' : 'Daftar'}<Icon name="chevron" size={16} /></button>
-          </form>
-          <div className="auth-switch">{authMode === 'login' ? 'Belum punya akun?' : 'Sudah punya akun?'} <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); setAuthNotice('') }}>{authMode === 'login' ? 'Daftar' : 'Masuk'}</button></div>
-        </section>
-        <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
-      </main>
+      <LoginScreen
+        authMode={authMode}
+        setAuthMode={setAuthMode}
+        loginName={loginName}
+        setLoginName={setLoginName}
+        loginEmail={loginEmail}
+        setLoginEmail={setLoginEmail}
+        loginPassword={loginPassword}
+        setLoginPassword={setLoginPassword}
+        loginPasswordConfirm={loginPasswordConfirm}
+        setLoginPasswordConfirm={setLoginPasswordConfirm}
+        showLoginPassword={showLoginPassword}
+        setShowLoginPassword={setShowLoginPassword}
+        showConfirmPassword={showConfirmPassword}
+        setShowConfirmPassword={setShowConfirmPassword}
+        loginStaffRole={loginStaffRole}
+        setLoginStaffRole={setLoginStaffRole}
+        roles={roles}
+        loginError={loginError}
+        authNotice={authNotice}
+        backendError={backendError}
+        authBusy={authBusy}
+        supabaseConfigured={supabaseConfigured}
+        onSubmit={submitAuthentication}
+        onClearMessages={() => { setLoginError(''); setAuthNotice('') }}
+      />
     )
   }
 
   if (currentUser.approvalStatus === 'pending') {
-    return (
-      <main className="login-page">
-        <section className="login-card approval-pending-card">
-          <span className="approval-pending-icon"><Icon name="clock" size={23} /></span>
-          <div className="login-heading">
-            <span className="eyebrow">PENDAFTARAN PEGAWAI</span>
-            <h1>Menunggu persetujuan</h1>
-            <p>Akun {currentUser.name} belum dapat digunakan. Supervisor perlu menyetujui pendaftaran Anda terlebih dahulu.</p>
-          </div>
-          <button type="button" className="login-submit" onClick={confirmLogout}>Keluar dan kembali ke halaman masuk<Icon name="logout" size={16} /></button>
-        </section>
-        <span className="login-footer">BRI <i>·</i> Internal Compliance</span>
-      </main>
-    )
+    return <PendingApprovalScreen name={currentUser.name} onLogout={confirmLogout} />
   }
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setPage('dashboard') }}>
-          <span className="brand-mark" aria-hidden="true">
-            <img src="/bri-logo.png" alt="" />
-          </span>
-          <span className="brand-copy">
-            <strong>BRI</strong>
-            <small>OPERASIONAL BANK</small>
-          </span>
-        </a>
-
-        <div className="sidebar-section-label">MENU UTAMA</div>
-        <nav className="main-nav" aria-label="Navigasi utama">
-          {navItems.map((item) => (
-            <button
-              className={`nav-item ${page === item.id ? 'active' : ''}`}
-              key={item.id}
-              onClick={() => setPage(item.id)}
-            >
-              <Icon name={item.icon} size={19} />
-              <span>{item.label}</span>
-              {item.id === 'approvals' && pendingApprovals.length > 0 && (
-                <span className="nav-count">{pendingApprovals.length}</span>
-              )}
-              {item.id === 'dashboard' && overdueTasks.length > 0 && (
-                <span className="nav-count">{overdueTasks.length}</span>
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-section-label sidebar-section-spaced">UNIT KERJA</div>
-        <div className="sidebar-unit-card">
-          <span className="unit-icon"><Icon name="building" size={17} /></span>
-          <span><strong>{currentUser.accessRole === 'Supervisor' ? (sidebarUnit ?? 'Belum ada unit') : currentUser.unitName}</strong><small>{currentUser.accessRole === 'Supervisor' ? `${unitNames.length} unit terdaftar` : currentUser.role}</small></span>
-          {sidebarUnit && <span className="online-dot" title="Unit terdaftar" />}
-        </div>
-
-        <div className="sidebar-footer">
-          <button className="profile-button" onClick={() => setLogoutConfirmOpen(true)}>
-            <span className="avatar avatar-supervisor">{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-            <span className="profile-copy"><strong>{currentUser.name}</strong><small>{currentUser.accessRole === 'Supervisor' ? 'Supervisor' : currentUser.role}</small></span>
-            <Icon name="logout" size={17} />
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        currentUser={currentUser}
+        navItems={navItems}
+        page={page}
+        setPage={setPage}
+        pendingApprovalsCount={pendingApprovals.length}
+        overdueCount={overdueTasks.length}
+        unitNames={unitNames}
+        sidebarUnit={sidebarUnit}
+        onLogout={() => setLogoutConfirmOpen(true)}
+      />
 
       <main className="main-content">
-        <header className="topbar">
-          <div className="breadcrumb"><span>Operasional</span><Icon name="chevron" size={14} /><strong>{navItems.find((item) => item.id === page)?.label}</strong></div>
-          <div className="topbar-actions">
-            <div className="clock-chip"><Icon name="clock" size={16} /><strong>{clock.label}</strong><span>WIB</span></div>
-            <button
-              className={`icon-button notification-button ${notificationOpen ? 'selected' : ''}`}
-              aria-label="Notifikasi"
-              onClick={() => setNotificationOpen((open) => !open)}
-            >
-              <Icon name="bell" size={19} />
-              {overdueTasks.length > 0 && <span className="notification-dot" />}
-            </button>
-            <button className="icon-button logout-button" aria-label="Keluar" onClick={() => setLogoutConfirmOpen(true)}><Icon name="logout" size={18} /></button>
-            <span className="topbar-divider" />
-            <div className="topbar-user">
-              <span className="avatar avatar-supervisor">{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-              <span><strong>{currentUser.name}</strong><small>{currentUser.accessRole}</small></span>
-            </div>
-          </div>
-          {notificationOpen && (
-            <div className="notification-popover">
-              <div className="popover-heading"><strong>Notifikasi</strong><button className="plain-button" onClick={() => setNotificationOpen(false)} aria-label="Tutup notifikasi"><Icon name="close" size={17} /></button></div>
-              {overdueTasks.length
-                ? <p><span className="notification-dot inline-dot" /> Ada <strong>{overdueTasks.length} tugas</strong> yang melewati deadline pada filter saat ini.</p>
-                : <p className="empty-notification">Tidak ada tugas terlambat. Semua terkendali.</p>}
-              <button className="popover-link" onClick={() => { setPage('dashboard'); setNotificationOpen(false) }}>Lihat dashboard <Icon name="chevron" size={14} /></button>
-            </div>
-          )}
-        </header>
+        <Topbar
+          pageLabel={navItems.find((item) => item.id === page)?.label}
+          currentUser={currentUser}
+          clock={clock}
+          notificationOpen={notificationOpen}
+          setNotificationOpen={setNotificationOpen}
+          overdueCount={overdueTasks.length}
+          onEditProfile={() => setProfileEditOpen(true)}
+          onLogout={() => setLogoutConfirmOpen(true)}
+          onOpenDashboard={() => { setPage('dashboard'); setNotificationOpen(false) }}
+        />
 
         <div className="page-container">
           <Suspense fallback={<div className="grid min-h-48 place-items-center text-sm text-bri-blue" role="status"><span className="flex items-center gap-2"><span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />Memuat halaman...</span></div>}>
@@ -778,6 +989,9 @@ function App() {
             {currentUser.accessRole === 'Supervisor' && page === 'approvals' && (
               <ApprovalsPage {...approvalsPageProps} />
             )}
+            {currentUser.accessRole === 'Supervisor' && page === 'employees' && (
+              <EmployeesPage {...employeesPageProps} />
+            )}
             {currentUser.accessRole === 'Supervisor' && page === 'activity' && (
               <ActivityPage {...activityPageProps} />
             )}
@@ -786,40 +1000,31 @@ function App() {
             )}
           </Suspense>
         </div>
-        {evidencePreview && (
-          <div className="evidence-modal-backdrop" role="presentation" onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setEvidencePreview(null)
-          }}>
-            <section className="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidence-modal-title">
-              <div className="evidence-modal-header"><div><h2 id="evidence-modal-title">Bukti foto</h2><p>{evidencePreview.title}</p></div><button type="button" className="plain-button" aria-label="Tutup pratinjau" onClick={() => setEvidencePreview(null)}><Icon name="close" size={19} /></button></div>
-              <img src={evidencePreview.src} alt={`Bukti foto: ${evidencePreview.title}`} />
-            </section>
-          </div>
+        <EvidencePreviewModal evidencePreview={evidencePreview} onClose={() => setEvidencePreview(null)} />
+        {cameraOpen && (
+          <CameraModal
+            videoRef={cameraVideoRef}
+            loading={cameraLoading}
+            ready={cameraReady}
+            error={cameraError}
+            onReady={() => setCameraReady(true)}
+            onClose={closeCamera}
+            onSelectFile={openEvidenceFilePicker}
+            onCapture={captureEvidencePhoto}
+          />
         )}
         {logoutConfirmOpen && (
-          <div
-            className="modal-backdrop logout-modal-backdrop"
-            role="presentation"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setLogoutConfirmOpen(false)
-            }}
-          >
-            <section className="staff-modal logout-modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
-              <div className="modal-header">
-                <div>
-                  <span className="modal-icon"><Icon name="logout" size={17} /></span>
-                  <div>
-                    <h2 id="logout-modal-title">Keluar dari akun?</h2>
-                    <p>Anda perlu masuk kembali untuk melanjutkan.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="logout-modal-actions">
-                <button type="button" className="secondary-button" onClick={() => setLogoutConfirmOpen(false)}>Batal</button>
-                <button type="button" className="logout-confirm-button" onClick={confirmLogout}>Ya, keluar</button>
-              </div>
-            </section>
-          </div>
+          <LogoutConfirmationModal onCancel={() => setLogoutConfirmOpen(false)} onConfirm={confirmLogout} />
+        )}
+        {profileEditOpen && (
+          <ProfileEditModal
+            currentUser={currentUser}
+            onClose={() => setProfileEditOpen(false)}
+            onSaveName={saveProfileName}
+            onSaveEmail={saveProfileEmail}
+            onSavePassword={saveProfilePassword}
+            onUploadPhoto={uploadProfilePhoto}
+          />
         )}
       </main>
     </div>
