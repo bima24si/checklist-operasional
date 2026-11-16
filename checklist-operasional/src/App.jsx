@@ -12,7 +12,7 @@ import LogoutConfirmationModal from './components/modals/LogoutConfirmationModal
 import ProfileEditModal from './components/modals/ProfileEditModal.jsx'
 import { roles } from './data/roles.js'
 import { taskTemplates } from './data/taskTemplates.js'
-import { getTaskStatus, getWibTime } from './lib/dateTime.js'
+import { getTaskStatus, getWibDateKey, getWibTime } from './lib/dateTime.js'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'))
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage.jsx'))
@@ -63,6 +63,7 @@ function App() {
   const [staff, setStaff] = useState([])
   const [tasks, setTasks] = useState([])
   const [activities, setActivities] = useState([])
+  const [dailyReports, setDailyReports] = useState([])
   const [pendingApprovals, setPendingApprovals] = useState([])
   const [approvalBusyId, setApprovalBusyId] = useState('')
   const [backendError, setBackendError] = useState(() => (
@@ -77,6 +78,7 @@ function App() {
   const [session, setSession] = useState('Pagi')
   const [taskFilter, setTaskFilter] = useState('Semua')
   const [clock, setClock] = useState(getWibTime)
+  const [todayWibDate, setTodayWibDate] = useState(getWibDateKey)
   const [notificationOpen, setNotificationOpen] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [profileEditOpen, setProfileEditOpen] = useState(false)
@@ -111,11 +113,15 @@ function App() {
   const cameraRequestIdRef = useRef(0)
   const uploadTaskRef = useRef(null)
   const activityRefreshInFlightRef = useRef(false)
+  const lastDailyRolloverDateRef = useRef('')
   const sessionLoadId = useRef(0)
   const registrationInProgress = useRef(false)
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(getWibTime()), 1000)
+    const timer = window.setInterval(() => {
+      setClock(getWibTime())
+      setTodayWibDate(getWibDateKey())
+    }, 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -143,7 +149,9 @@ function App() {
         setStaff([])
         setTasks([])
         setActivities([])
+        setDailyReports([])
         setPendingApprovals([])
+        lastDailyRolloverDateRef.current = ''
         setAuthReady(true)
         return
       }
@@ -161,6 +169,7 @@ function App() {
           setStaff([])
           setTasks([])
           setActivities([])
+          setDailyReports([])
           setPendingApprovals([])
           setCurrentUser({
             id: session.user.id,
@@ -197,10 +206,15 @@ function App() {
           profile = refreshedProfile
         }
 
-        const [staffResult, tasksResult, activitiesResult, approvalsResult] = await Promise.all([
+        const { error: rolloverError } = await supabase.rpc('rollover_daily_checklists')
+        if (rolloverError) throw rolloverError
+        lastDailyRolloverDateRef.current = getWibDateKey()
+
+        const [staffResult, tasksResult, activitiesResult, reportsResult, approvalsResult] = await Promise.all([
           supabase.from('staff').select('*').order('name'),
           supabase.from('checklist_tasks').select('*').eq('is_active', true).order('id'),
           supabase.from('activities').select('*').order('timestamp', { ascending: false }),
+          supabase.from('checklist_daily_reports').select('*').order('report_date', { ascending: false }).order('staff_name'),
           profile.access_role === 'Supervisor'
             ? supabase.rpc('list_pending_employee_approvals')
             : Promise.resolve({ data: [], error: null }),
@@ -208,6 +222,7 @@ function App() {
         if (staffResult.error) throw staffResult.error
         if (tasksResult.error) throw tasksResult.error
         if (activitiesResult.error) throw activitiesResult.error
+        if (reportsResult.error) throw reportsResult.error
         if (approvalsResult.error) throw approvalsResult.error
 
         const evidencePaths = [...new Set([
@@ -273,9 +288,26 @@ function App() {
             || '',
           timestamp: activity.timestamp,
         }))
+        const loadedDailyReports = reportsResult.data.map((report) => ({
+          id: `${report.report_date}-${report.task_id}`,
+          reportDate: report.report_date,
+          taskId: report.task_id,
+          staffId: report.staff_id,
+          staffName: report.staff_name,
+          role: report.role,
+          unitName: report.unit_name,
+          taskTitle: report.task_title,
+          session: report.session,
+          deadline: report.deadline,
+          type: report.task_type,
+          completed: report.completed,
+          evidencePath: report.evidence_path,
+          obstacleNote: report.obstacle_note,
+        }))
         setStaff(loadedStaff)
         setTasks(loadedTasks)
         setActivities(loadedActivities)
+        setDailyReports(loadedDailyReports)
         setPendingApprovals(approvalsResult.data ?? [])
         setNoteDrafts(Object.fromEntries(loadedTasks.map((task) => [task.id, task.obstacleNote ?? ''])))
         setChecklistStaffId(profile.staff_id ?? '')
@@ -329,6 +361,92 @@ function App() {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !supabaseConfigured
+      || !supabase
+      || currentUser?.approvalStatus !== 'approved'
+      || !lastDailyRolloverDateRef.current
+      || lastDailyRolloverDateRef.current === todayWibDate
+    ) return undefined
+
+    let active = true
+    const refreshForNewDay = async () => {
+      try {
+        const { error: rolloverError } = await supabase.rpc('rollover_daily_checklists')
+        if (rolloverError) throw rolloverError
+
+        const [tasksResult, reportsResult] = await Promise.all([
+          supabase.from('checklist_tasks').select('*').eq('is_active', true).order('id'),
+          supabase.from('checklist_daily_reports').select('*').order('report_date', { ascending: false }).order('staff_name'),
+        ])
+        if (tasksResult.error) throw tasksResult.error
+        if (reportsResult.error) throw reportsResult.error
+
+        const evidencePaths = [...new Set([
+          ...tasksResult.data.map((task) => task.evidence_path),
+        ].filter(Boolean))]
+        const signedEvidence = await Promise.all(evidencePaths.map(async (path) => {
+          const { data, error } = await supabase.storage
+            .from('evidence')
+            .createSignedUrl(path, 3600)
+          if (error) throw error
+          return [path, data.signedUrl]
+        }))
+        if (!active) return
+
+        const evidenceUrlByPath = new Map(signedEvidence)
+        const refreshedTasks = tasksResult.data.map((task) => ({
+          id: task.id,
+          staffId: task.staff_id,
+          staffName: task.staff_name,
+          role: task.role,
+          unitId: task.unit_id,
+          unitName: task.unit_name,
+          session: task.session,
+          deadline: task.deadline,
+          title: task.title,
+          description: task.description,
+          type: task.type,
+          completed: task.completed,
+          evidencePath: task.evidence_path,
+          evidence: task.evidence_path ? evidenceUrlByPath.get(task.evidence_path) : '',
+          obstacleNote: task.obstacle_note,
+          obstacleNoteUpdatedAt: task.obstacle_note_updated_at,
+        }))
+        const refreshedReports = reportsResult.data.map((report) => ({
+          id: `${report.report_date}-${report.task_id}`,
+          reportDate: report.report_date,
+          taskId: report.task_id,
+          staffId: report.staff_id,
+          staffName: report.staff_name,
+          role: report.role,
+          unitName: report.unit_name,
+          taskTitle: report.task_title,
+          session: report.session,
+          deadline: report.deadline,
+          type: report.task_type,
+          completed: report.completed,
+          evidencePath: report.evidence_path,
+          obstacleNote: report.obstacle_note,
+        }))
+        setTasks(refreshedTasks)
+        setNoteDrafts(Object.fromEntries(refreshedTasks.map((task) => [task.id, task.obstacleNote ?? ''])))
+        setDailyReports(refreshedReports)
+        lastDailyRolloverDateRef.current = todayWibDate
+        setBackendError('')
+      } catch (error) {
+        console.error('Checklist hari baru gagal diperbarui.', error)
+        if (active) setBackendError(`Checklist hari baru gagal diperbarui: ${error.message}`)
+      }
+    }
+
+    void refreshForNewDay()
+    return () => {
+      active = false
+    }
+  }, [currentUser?.id, currentUser?.approvalStatus, todayWibDate])
 
   const unitNames = [...new Set(staff.map((person) => person.unitName))]
   const checklistStaff = staff.find((person) => person.id === checklistStaffId)
@@ -888,7 +1006,7 @@ function App() {
   const dashboardPageProps = {
     overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit,
     setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount,
-    compliance, tasksWithNotes, staff, setPage, activities, openActivityEvidence,
+    compliance, tasksWithNotes, staff, setPage, activities, dailyReports, openActivityEvidence,
     refreshSupervisorActivities, activityRefreshBusy, activityRefreshError,
   }
   const approvalsPageProps = { pendingApprovals, approvalBusyId, approveRegistration }

@@ -1,10 +1,20 @@
+import { useState } from 'react'
 import { Icon, StatusBadge } from '../components/ui.jsx'
 import { roles } from '../data/roles.js'
 import { formatToday, formatActivityTimestamp } from '../lib/dateTime.js'
 
-export default function DashboardPage({ overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit, setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount, compliance, tasksWithNotes, staff, setPage, activities, openActivityEvidence, refreshSupervisorActivities, activityRefreshBusy, activityRefreshError }) {
+export default function DashboardPage({ overdueTasks, filteredOverdueTasks, selectedRole, setSelectedRole, selectedUnit, setSelectedUnit, unitNames, query, setQuery, dashboardTasks, completedCount, compliance, tasksWithNotes, staff, setPage, activities, dailyReports, openActivityEvidence, refreshSupervisorActivities, activityRefreshBusy, activityRefreshError }) {
+  const [selectedReportDate, setSelectedReportDate] = useState('')
   const recentEvidence = activities.filter((activity) => activity.action === 'Bukti foto diunggah').slice(0, 5)
   const reportRoles = [...new Set([...roles, ...dashboardTasks.map((task) => task.role)])].filter(Boolean)
+  const reportDates = [...new Set(dailyReports.map((report) => report.reportDate))]
+  const activeReportDate = reportDates.includes(selectedReportDate) ? selectedReportDate : reportDates[0] ?? ''
+  const selectedReports = dailyReports.filter((report) => report.reportDate === activeReportDate)
+  const selectedCompletedReports = selectedReports.filter((report) => report.completed).length
+  const activeReportDateLabel = activeReportDate
+    ? new Intl.DateTimeFormat('id-ID', { timeZone: 'UTC', dateStyle: 'full' })
+      .format(new Date(`${activeReportDate}T00:00:00.000Z`))
+    : ''
 
   return (
 <>
@@ -45,6 +55,68 @@ export default function DashboardPage({ overdueTasks, filteredOverdueTasks, sele
                   <div className="metric-main"><strong>{overdueTasks.length}<small> tugas</small></strong><span className="metric-note">{overdueTasks.length ? 'Melewati deadline hari ini' : 'Tidak ada tugas terlambat'}</span></div>
                   <div className="metric-foot metric-foot-standalone"><span className={overdueTasks.length ? 'metric-soft-red' : 'metric-soft-green'}>{overdueTasks.length ? 'Butuh perhatian segera' : 'Semua sesuai jadwal'}</span><span>Real-time</span></div>
                 </article>
+              </section>
+
+              <section className="panel report-panel">
+                <div className="panel-header">
+                  <div><h2>Arsip laporan harian</h2><p>Status checklist, foto, dan catatan tersimpan saat hari berganti</p></div>
+                </div>
+                {reportDates.length ? (
+                  <>
+                    <div className="report-filters">
+                      <label className="select-field">
+                        <Icon name="filter" size={16} />
+                        <select
+                          value={activeReportDate}
+                          onChange={(event) => setSelectedReportDate(event.target.value)}
+                          aria-label="Pilih tanggal laporan harian"
+                        >
+                          {reportDates.map((reportDate) => (
+                            <option key={reportDate} value={reportDate}>
+                              {new Intl.DateTimeFormat('id-ID', { timeZone: 'UTC', dateStyle: 'medium' })
+                                .format(new Date(`${reportDate}T00:00:00.000Z`))}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <span className="report-summary">
+                        <strong>{selectedCompletedReports} dari {selectedReports.length} tugas selesai</strong>
+                        {' · '}{activeReportDateLabel}
+                      </span>
+                    </div>
+                    <div className="report-table-wrap">
+                      <table className="report-table">
+                        <thead>
+                          <tr><th>PEGAWAI</th><th>PEKERJAAN</th><th>STATUS</th><th>CATATAN KENDALA</th><th>BUKTI</th></tr>
+                        </thead>
+                        <tbody>
+                          {selectedReports.map((report) => (
+                            <tr key={report.id}>
+                              <td>
+                                <span className="report-staff"><strong>{report.staffName}</strong></span>
+                                <small>{report.role} · {report.unitName}</small>
+                              </td>
+                              <td>{report.taskTitle}<small>Sesi {report.session} · Deadline {report.deadline} WIB</small></td>
+                              <td><StatusBadge status={report.completed ? 'COMPLETED' : 'PENDING'} /></td>
+                              <td>{report.obstacleNote || '—'}</td>
+                              <td>
+                                {report.evidencePath
+                                  ? <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(report)}>Lihat foto</button>
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state obstacle-empty">
+                    <span className="empty-check"><Icon name="report" size={19} /></span>
+                    <strong>Belum ada arsip laporan harian</strong>
+                    <span>Laporan pertama akan tersimpan otomatis saat hari berganti.</span>
+                  </div>
+                )}
               </section>
 
               <section className="panel recent-evidence-panel">

@@ -6,8 +6,9 @@ Dashboard checklist dan kepatuhan operasional dengan Supabase Auth, Postgres, Ro
 
 1. Nilai URL project dan publishable key Supabase di `.env.local`. Contohnya tersedia di `.env.example`.
 2. Di Supabase Dashboard, buka **SQL Editor**, jalankan seluruh isi `supabase/schema.sql`. Jalankan ulang script ini untuk menerapkan pembaruan skema, termasuk penyimpanan referensi foto di riwayat aktivitas; jika tabel `public` sebelumnya dihapus, script lengkap ini akan membuatnya kembali.
-3. Pastikan **Authentication > Providers > Email** aktif. Jika konfirmasi email diaktifkan, pegawai harus mengonfirmasi alamatnya sebelum login.
-4. Mulai ulang Vite setelah mengubah `.env.local`.
+3. Jalankan `supabase/daily_checklist_reports.sql` setelah `schema.sql`. Script ini mengaktifkan arsip harian dan reset checklist otomatis berdasarkan pergantian tanggal WIB. Status, bukti foto, dan catatan kendala disalin ke laporan harian sebelum checklist hari baru dikosongkan.
+4. Pastikan **Authentication > Providers > Email** aktif. Jika konfirmasi email diaktifkan, pegawai harus mengonfirmasi alamatnya sebelum login.
+5. Mulai ulang Vite setelah mengubah `.env.local`.
 
 Untuk project Supabase yang sudah berjalan, jalankan `supabase/profile_features.sql` di **SQL Editor** agar fungsi ubah nama, bucket foto profil, dan policy aksesnya tersedia. Script aman dijalankan ulang. Setelah berhasil, tunggu schema cache Supabase diperbarui lalu muat ulang aplikasi.
 
@@ -26,6 +27,7 @@ Jangan masukkan `service_role` key ke aplikasi atau ke file yang dikirim ke brow
 ## Data dan akses
 
 - Data staf, checklist, catatan kendala, dan riwayat aktivitas disimpan di Postgres.
+- Setelah `daily_checklist_reports.sql` dipasang, checklist aktif otomatis diarsipkan dan direset saat aplikasi digunakan pada tanggal WIB yang baru. Dashboard supervisor menampilkan arsip per tanggal, termasuk status, foto, dan catatan kendala.
 - Bukti foto disimpan di bucket privat `evidence`; aplikasi menggunakan signed URL sementara untuk menampilkan foto.
 - Tombol **Tambah foto** membuka kamera perangkat melalui browser. Izinkan akses kamera saat diminta; kamera browser memerlukan HTTPS (atau localhost). Jika kamera tidak tersedia, pilih foto dari perangkat.
 - Menu profil menyediakan edit nama, foto profil, email, dan password. Nama/email/password dapat disimpan sekaligus dengan satu tombol; foto diunggah saat dipilih. Role serta unit kerja tidak dapat diubah dari menu tersebut.
