@@ -1675,8 +1675,42 @@
 
 .activity-filters {
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 0 17px 13px;
+}
+
+.activity-period-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #829087;
+  font-size: 9px;
+}
+
+.activity-period-control > span {
+  margin-right: 3px;
+  white-space: nowrap;
+}
+
+.activity-period-button {
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid #e8ece9;
+  border-radius: 6px;
+  color: #68786e;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.activity-period-button.active {
+  border-color: #b7d3e6;
+  color: #00529b;
+  background: #eaf3f8;
+  font-weight: 650;
 }
 
 .activity-filters .search-field {
@@ -1747,8 +1781,34 @@
   border-top: 1px solid #edf0ed;
 }
 
-.activity-role-group + .activity-role-group {
+.activity-period-group + .activity-period-group {
   border-top: 1px solid #e6ece8;
+}
+
+.activity-period-heading {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 17px;
+  background: #f3f6f4;
+}
+
+.activity-period-heading h3 {
+  margin: 0;
+  color: #405a6b;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.activity-period-heading span {
+  color: #718078;
+  font-size: 9px;
+}
+
+.activity-role-group + .activity-role-group {
+  border-top: 1px solid #edf0ed;
 }
 
 .activity-role-heading {
@@ -1757,20 +1817,27 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 17px;
-  background: #f7f9f8;
+  padding: 0 17px 0 14px;
+  border-left: 3px solid #287cbb;
+  background: #eef5f9;
 }
 
 .activity-role-heading h3 {
   margin: 0;
-  color: #405a6b;
-  font-size: 11px;
-  font-weight: 650;
+  color: #164f78;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .activity-role-heading span {
-  color: #718078;
+  padding: 4px 8px;
+  border: 1px solid #dceaf2;
+  border-radius: 12px;
+  color: #386985;
+  background: #fff;
   font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .activity-row {
@@ -3596,6 +3663,10 @@ button.task-checkbox:hover {
   .activity-filters .select-field {
     flex: 1;
     min-width: 0;
+  }
+
+  .activity-period-control {
+    flex: 1 1 100%;
   }
 
   .activity-row {

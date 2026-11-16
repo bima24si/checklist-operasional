@@ -1,6 +1,72 @@
+import { useState } from 'react'
 import { Icon } from '../components/ui.jsx'
 import { roles } from '../data/roles.js'
 import { formatActivityTimestamp } from '../lib/dateTime.js'
+
+const activityPeriods = [
+  { value: 'day', label: 'Harian' },
+  { value: 'week', label: 'Mingguan' },
+  { value: 'month', label: 'Bulanan' },
+]
+
+const wibDatePartsFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jakarta',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+const dailyPeriodFormatter = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+})
+const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+})
+const monthlyPeriodFormatter = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'UTC',
+  month: 'long',
+  year: 'numeric',
+})
+
+function getWibDateParts(timestamp) {
+  const parts = wibDatePartsFormatter.formatToParts(new Date(timestamp))
+  return Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+}
+
+function getActivityPeriod(timestamp, period) {
+  const { year, month, day } = getWibDateParts(timestamp)
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+
+  if (period === 'day') {
+    return {
+      key: `${year}-${month}-${day}`,
+      label: dailyPeriodFormatter.format(date),
+    }
+  }
+
+  if (period === 'week') {
+    const weekday = date.getUTCDay() || 7
+    const weekStart = new Date(date)
+    weekStart.setUTCDate(date.getUTCDate() - weekday + 1)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6)
+    return {
+      key: weekStart.toISOString().slice(0, 10),
+      label: `${dateFormatter.format(weekStart)} – ${dateFormatter.format(weekEnd)}`,
+    }
+  }
+
+  return {
+    key: `${year}-${month}`,
+    label: monthlyPeriodFormatter.format(date),
+  }
+}
 
 export default function ActivityPage({
   clock,
@@ -13,10 +79,33 @@ export default function ActivityPage({
   activityUnit,
   setActivityUnit,
   unitNames,
-  groupedActivities,
   openActivityEvidence,
 }) {
+  const [activityPeriod, setActivityPeriod] = useState('day')
   const activityRoles = [...new Set([...roles, ...activities.map((activity) => activity.role)])].filter(Boolean)
+  const periodGroupsByKey = new Map()
+  visibleActivities.forEach((activity) => {
+    const period = getActivityPeriod(activity.timestamp, activityPeriod)
+    let group = periodGroupsByKey.get(period.key)
+    if (!group) {
+      group = { ...period, activities: [] }
+      periodGroupsByKey.set(period.key, group)
+    }
+    group.activities.push(activity)
+  })
+  const periodGroups = [...periodGroupsByKey.values()]
+  periodGroups.forEach((periodGroup) => {
+    periodGroup.roleGroups = [...new Set([
+      ...roles,
+      ...periodGroup.activities.map((activity) => activity.role),
+    ])]
+      .filter(Boolean)
+      .map((role) => ({
+        role,
+        activities: periodGroup.activities.filter((activity) => activity.role === role),
+      }))
+      .filter((roleGroup) => roleGroup.activities.length > 0)
+  })
 
   return (
     <>
@@ -53,33 +142,55 @@ export default function ActivityPage({
           <span className="count-pill activity-count">{visibleActivities.length} aktivitas</span>
         </div>
         <div className="activity-filters">
+          <div className="activity-period-control" role="group" aria-label="Kelompokkan aktivitas berdasarkan periode">
+            <span>Catatan per</span>
+            {activityPeriods.map((period) => (
+              <button
+                type="button"
+                key={period.value}
+                className={`activity-period-button ${activityPeriod === period.value ? 'active' : ''}`}
+                aria-pressed={activityPeriod === period.value}
+                onClick={() => setActivityPeriod(period.value)}
+              >
+                {period.label}
+              </button>
+            ))}
+          </div>
           <label className="search-field"><Icon name="search" size={16} /><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} placeholder="Cari nama atau tugas..." /></label>
           <label className="select-field"><Icon name="filter" size={16} /><select value={activityRole} onChange={(event) => setActivityRole(event.target.value)} aria-label="Filter aktivitas berdasarkan role"><option>Semua role</option>{activityRoles.map((role) => <option key={role}>{role}</option>)}</select></label>
           <label className="select-field unit-select"><Icon name="building" size={16} /><select value={activityUnit} onChange={(event) => setActivityUnit(event.target.value)} aria-label="Filter aktivitas berdasarkan unit"><option value="Semua unit">Semua unit</option>{unitNames.map((unitName) => <option key={unitName} value={unitName}>{unitName}</option>)}</select></label>
         </div>
         {visibleActivities.length ? (
           <div className="activity-list">
-            {groupedActivities.map((group) => (
-              <section className="activity-role-group" key={group.role}>
-                <header className="activity-role-heading">
-                  <h3>{group.role}</h3>
+            {periodGroups.map((group) => (
+              <section className="activity-period-group" key={group.key}>
+                <header className="activity-period-heading">
+                  <h3>{group.label}</h3>
                   <span>{group.activities.length} aktivitas</span>
                 </header>
-                {group.activities.map((activity) => (
-                  <article className="activity-row" key={activity.id}>
-                    <span className={`activity-event-icon ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-event-undo' : ''} ${activity.action === 'Bukti foto diunggah' ? 'activity-event-evidence' : ''}`}><Icon name={activity.action === 'Bukti foto diunggah' ? 'camera' : activity.action === 'Penyelesaian dibatalkan' ? 'close' : 'check'} size={16} /></span>
-                    <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
-                    <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
-                    <div className="activity-action-group">
-                      <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
-                      {activity.action === 'Bukti foto diunggah' && (
-                        <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(activity)}>
-                          Lihat foto
-                        </button>
-                      )}
-                    </div>
-                    <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
-                  </article>
+                {group.roleGroups.map((roleGroup) => (
+                  <section className="activity-role-group" key={roleGroup.role}>
+                    <header className="activity-role-heading">
+                      <h3>{roleGroup.role}</h3>
+                      <span>{roleGroup.activities.length} aktivitas</span>
+                    </header>
+                    {roleGroup.activities.map((activity) => (
+                      <article className="activity-row" key={activity.id}>
+                        <span className={`activity-event-icon ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-event-undo' : ''} ${activity.action === 'Bukti foto diunggah' ? 'activity-event-evidence' : ''}`}><Icon name={activity.action === 'Bukti foto diunggah' ? 'camera' : activity.action === 'Penyelesaian dibatalkan' ? 'close' : 'check'} size={16} /></span>
+                        <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
+                        <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
+                        <div className="activity-action-group">
+                          <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
+                          {activity.action === 'Bukti foto diunggah' && (
+                            <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(activity)}>
+                              Lihat foto
+                            </button>
+                          )}
+                        </div>
+                        <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
+                      </article>
+                    ))}
+                  </section>
                 ))}
               </section>
             ))}

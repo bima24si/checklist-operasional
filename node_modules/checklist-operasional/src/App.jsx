@@ -372,15 +372,6 @@ function App() {
       && (!activityQuery || `${activity.staffName} ${activity.taskTitle} ${activity.action}`.toLocaleLowerCase().includes(activityQuery.toLocaleLowerCase())),
     )
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-  const activityRoles = [...new Set([...roles, ...visibleActivities.map((activity) => activity.role)])]
-    .filter(Boolean)
-  const groupedActivities = activityRoles
-    .map((role) => ({
-      role,
-      activities: visibleActivities.filter((activity) => activity.role === role),
-    }))
-    .filter((group) => group.activities.length > 0)
-
   const refreshSupervisorActivities = useCallback(async () => {
     if (!supabase || activityRefreshInFlightRef.current) return
     activityRefreshInFlightRef.current = true
@@ -903,8 +894,7 @@ function App() {
   const approvalsPageProps = { pendingApprovals, approvalBusyId, approveRegistration }
   const activityPageProps = {
     clock, visibleActivities, activities, activityQuery, setActivityQuery, activityRole,
-    setActivityRole, activityUnit, setActivityUnit, unitNames, groupedActivities,
-    openActivityEvidence,
+    setActivityRole, activityUnit, setActivityUnit, unitNames, openActivityEvidence,
   }
   const employeesPageProps = { staff }
   const checklistPageProps = {
