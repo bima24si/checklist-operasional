@@ -16,7 +16,7 @@ export default function CameraModal({
     }}>
       <section className="camera-modal" role="dialog" aria-modal="true" aria-labelledby="camera-modal-title">
         <div className="evidence-modal-header">
-          <div><h2 id="camera-modal-title">Ambil foto bukti</h2><p>Arahkan kamera ke bukti tugas, lalu ambil foto.</p></div>
+          <div><h2 id="camera-modal-title">Ambil foto bukti</h2><p>Ambil atau pilih foto sebagai bukti pelaksanaan tugas. Foto disimpan dan tugas ditandai selesai.</p></div>
           <button type="button" className="plain-button" aria-label="Tutup kamera" onClick={onClose}><Icon name="close" size={19} /></button>
         </div>
         <div className="camera-preview">

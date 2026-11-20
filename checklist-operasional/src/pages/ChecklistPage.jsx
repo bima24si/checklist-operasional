@@ -80,9 +80,9 @@ export default function ChecklistPage({
                 <div className="evidence-line">
                   {task.evidence
                     ? <button type="button" className="evidence-preview-button" onClick={() => openEvidencePreview(task)}><img className="evidence-thumb" src={task.evidence} alt="" /><span>Lihat foto bukti</span></button>
-                    : <><Icon name="camera" size={14} /><span>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Bukti foto wajib' : 'Foto bukti opsional'}</span></>}
-                  {!task.completed && <button className="upload-button" onClick={() => openEvidenceUpload(task.id)}>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Unggah foto' : 'Tambah foto'}</button>}
-                  {task.completed && <button className="replace-button" onClick={() => openEvidenceUpload(task.id)}>{task.evidence ? 'Ganti foto' : 'Tambah foto'}</button>}
+                    : <><Icon name="camera" size={14} /><span>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Bukti foto wajib untuk menyelesaikan tugas' : 'Foto bukti opsional untuk pelaksanaan tugas'}</span></>}
+                  {!task.completed && <button className="upload-button" title="Unggah foto sebagai bukti pelaksanaan tugas. Foto akan disimpan dan tugas ditandai selesai." onClick={() => openEvidenceUpload(task.id)}>{task.type === 'CHECKBOX_WITH_IMAGE' ? 'Unggah foto' : 'Tambah foto'}</button>}
+                  {task.completed && <button className="replace-button" title="Ganti foto bukti pelaksanaan tugas yang tersimpan" onClick={() => openEvidenceUpload(task.id)}>{task.evidence ? 'Ganti foto' : 'Tambah foto'}</button>}
                 </div>
                 <div className="obstacle-entry">
                   {task.obstacleNote && !openNoteIds[task.id] && (

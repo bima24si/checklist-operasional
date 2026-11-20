@@ -38,10 +38,7 @@ export default function LoginScreen({
       <section className="login-card">
         <a className="login-brand" href="#" onClick={(event) => event.preventDefault()}>
           <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" focusable="false">
-              <path fill="#00529b" d="M5 8h14v5H5zm0 8h22v5H5zm0 8h14v5H5z" />
-              <path fill="#f4c542" d="M21 8h6v5h-6zm-4 16h10v5H17z" />
-            </svg>
+            <img src="/bri-logo.png" alt="" />
           </span>
           <span className="brand-copy"><strong>BRI</strong><small>OPERASIONAL BANK</small></span>
         </a>

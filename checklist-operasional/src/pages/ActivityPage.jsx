@@ -180,11 +180,12 @@ export default function ActivityPage({
                         <div className="activity-who"><strong>{activity.staffName}</strong><span>{activity.role} <i>·</i> {activity.unitName}</span></div>
                         <div className="activity-what"><strong>{activity.taskTitle}</strong><span>Sesi {activity.session}</span></div>
                         <div className="activity-action-group">
-                          <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
-                          {activity.action === 'Bukti foto diunggah' && (
-                            <button type="button" className="activity-photo-button" onClick={() => void openActivityEvidence(activity)}>
-                              Lihat foto
+                          {activity.action === 'Bukti foto diunggah' ? (
+                            <button type="button" className="activity-action activity-action-button" onClick={() => void openActivityEvidence(activity)}>
+                              Bukti foto diunggah
                             </button>
+                          ) : (
+                            <span className={`activity-action ${activity.action === 'Penyelesaian dibatalkan' ? 'activity-action-undo' : ''}`}>{activity.action}</span>
                           )}
                         </div>
                         <time className="activity-time" dateTime={activity.timestamp}>{formatActivityTimestamp(activity.timestamp)} WIB</time>
